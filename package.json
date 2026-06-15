@@ -1,0 +1,20 @@
+{
+  "name": "ai-codebase-rag",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Local AI knowledge base scaffold powered by Ollama, Qwen and nomic embeddings.",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "npm run dev --workspaces --if-present",
+    "dev:server": "npm run dev -w apps/server",
+    "dev:web": "npm run dev -w apps/web",
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "lint": "npm run lint --workspaces --if-present"
+  },
+  "engines": {
+    "node": ">=20.11.0"
+  }
+}

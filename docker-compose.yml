@@ -1,0 +1,8 @@
+services:
+  chromadb:
+    image: chromadb/chroma:latest
+    container_name: ai-codebase-rag-chromadb
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./data/chroma:/data
