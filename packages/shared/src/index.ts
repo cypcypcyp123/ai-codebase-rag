@@ -37,7 +37,7 @@ export interface ScannedCodeFileSummary {
 	lineCount: number;
 }
 
-export type CodeChunkType = "file";
+export type CodeChunkType = "file" | "function" | "class" | "component";
 
 export interface CodeChunk {
 	id: string;
@@ -95,6 +95,7 @@ export interface SearchCodeResult {
 	vectorScore: number;
 	keywordScore: number;
 	preview: string;
+	content?: string;
 }
 
 export interface SearchCodeResponse {
