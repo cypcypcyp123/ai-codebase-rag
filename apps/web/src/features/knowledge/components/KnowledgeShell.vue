@@ -10,8 +10,10 @@ import {
 	Files,
 	FolderOpened,
 	Link,
+	Moon,
 	Refresh,
 	Search,
+	Sunny,
 	Upload,
 	UploadFilled,
 } from "@element-plus/icons-vue";
@@ -76,6 +78,18 @@ const hasAnswerPanelContent = computed(() =>
 	Boolean(answerMarkdown.value || loading.ask || answerCitations.value.length),
 );
 const answerCopied = shallowRef(false);
+const themeMode = shallowRef<"paper" | "ink">("paper");
+const isInkTheme = computed(() => themeMode.value === "ink");
+const shellClasses = computed(() => ({
+	"knowledge-shell": true,
+	"knowledge-shell--paper": themeMode.value === "paper",
+	"knowledge-shell--ink": themeMode.value === "ink",
+}));
+const themeLabel = computed(() => (isInkTheme.value ? "古风宣纸" : "水墨暗黑"));
+
+function toggleThemeMode() {
+	themeMode.value = isInkTheme.value ? "paper" : "ink";
+}
 
 function statusType(status: CodeRepository["status"]) {
 	const typeMap: Record<
@@ -130,28 +144,37 @@ async function copyAnswerMarkdown() {
 </script>
 
 <template>
-	<main class="knowledge-shell">
+	<main :class="shellClasses">
 		<section class="hero-band">
 			<div class="hero-band__copy">
-				<p class="hero-band__eyebrow">AI Codebase Intelligence</p>
+				<p class="hero-band__eyebrow">AI Codebase Intelligence · 江湖卷宗</p>
 				<h1 class="hero-band__title">代码知识库平台</h1>
 				<p class="hero-band__summary">
 					面向 Vue、React、Node 项目的源码扫描、代码分片、ChromaDB
-					索引与语义检索工作台。
+					索引与语义检索工作台。以宣纸为案、水墨为界，把仓库脉络铺成可追问的代码长卷。
 				</p>
 			</div>
 
-			<div class="hero-band__status">
-				<el-tag
-					:type="health?.ok ? 'success' : 'danger'"
-					size="large"
-					effect="dark"
+			<div class="hero-band__tools">
+				<el-button
+					class="theme-toggle"
+					:icon="isInkTheme ? Sunny : Moon"
+					@click="toggleThemeMode"
 				>
-					API {{ health?.ok ? "在线" : "未连接" }}
-				</el-tag>
-				<span class="hero-band__model">{{
-					health?.ollama.chatModel ?? "qwen3.5:4b"
-				}}</span>
+					{{ themeLabel }}
+				</el-button>
+				<div class="hero-band__status">
+					<el-tag
+						:type="health?.ok ? 'success' : 'danger'"
+						size="large"
+						effect="dark"
+					>
+						API {{ health?.ok ? "在线" : "未连接" }}
+					</el-tag>
+					<span class="hero-band__model">{{
+						health?.ollama.chatModel ?? "qwen3.5:4b"
+					}}</span>
+				</div>
 			</div>
 		</section>
 
@@ -1005,6 +1028,595 @@ async function copyAnswerMarkdown() {
 	.workspace-layout,
 	.workspace-layout--actions {
 		grid-template-columns: 1fr;
+	}
+}
+
+.knowledge-shell {
+	--font-title: "Ma Shan Zheng", "Noto Serif SC", serif;
+	--font-body: "Noto Serif SC", "Microsoft YaHei", serif;
+	--page-bg: #efe1bf;
+	--page-ink: #2c2419;
+	--muted-ink: #6f5e45;
+	--paper: rgba(255, 249, 232, 0.88);
+	--paper-strong: rgba(255, 252, 239, 0.96);
+	--paper-soft: rgba(247, 235, 203, 0.72);
+	--line: rgba(93, 66, 36, 0.2);
+	--line-strong: rgba(61, 42, 24, 0.34);
+	--accent: #8b1f1f;
+	--accent-2: #2f6b50;
+	--gold: #b28a3d;
+	--shadow: 0 18px 42px rgba(66, 45, 22, 0.12);
+	--inner-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.72);
+	--el-color-primary: var(--accent);
+	--el-color-primary-light-3: #ad514a;
+	--el-color-primary-light-5: #c9887f;
+	--el-color-primary-light-7: #dfb7aa;
+	--el-color-primary-light-8: #ead0c2;
+	--el-color-primary-light-9: #f5e8da;
+	--el-color-primary-dark-2: #611412;
+	--el-border-color: var(--line);
+	--el-border-color-light: rgba(93, 66, 36, 0.16);
+	--el-border-color-lighter: rgba(93, 66, 36, 0.1);
+	--el-text-color-primary: var(--page-ink);
+	--el-text-color-regular: var(--muted-ink);
+	--el-fill-color-blank: var(--paper-strong);
+	--el-fill-color-light: rgba(250, 239, 210, 0.72);
+	--el-bg-color: var(--paper-strong);
+	--el-bg-color-overlay: var(--paper-strong);
+	position: relative;
+	isolation: isolate;
+	overflow: hidden;
+	padding: 30px;
+	color: var(--page-ink);
+	font-family: var(--font-body);
+	background:
+		radial-gradient(ellipse at 18% 8%, rgba(98, 74, 42, 0.12), transparent 34%),
+		linear-gradient(115deg, rgba(123, 26, 26, 0.08), transparent 28%),
+		repeating-linear-gradient(
+			88deg,
+			rgba(88, 62, 32, 0.055) 0 1px,
+			transparent 1px 42px
+		),
+		linear-gradient(180deg, #f3e5c6 0%, var(--page-bg) 45%, #e6d2a8 100%);
+	transition:
+		color 220ms ease,
+		background 260ms ease;
+}
+
+.knowledge-shell--ink {
+	--page-bg: #12110e;
+	--page-ink: #efe3c6;
+	--muted-ink: #aa9b7c;
+	--paper: rgba(27, 27, 23, 0.84);
+	--paper-strong: rgba(34, 33, 28, 0.95);
+	--paper-soft: rgba(15, 16, 14, 0.72);
+	--line: rgba(211, 185, 132, 0.19);
+	--line-strong: rgba(223, 195, 139, 0.34);
+	--accent: #c2483c;
+	--accent-2: #6fb08a;
+	--gold: #d0a955;
+	--shadow: 0 22px 52px rgba(0, 0, 0, 0.34);
+	--inner-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
+	--el-color-primary: var(--accent);
+	--el-color-primary-light-3: #d16c5d;
+	--el-color-primary-light-5: #de9382;
+	--el-color-primary-light-7: #e9b9a9;
+	--el-color-primary-light-8: #f0d0c3;
+	--el-color-primary-light-9: rgba(194, 72, 60, 0.14);
+	--el-color-primary-dark-2: #8e2e26;
+	--el-border-color: var(--line);
+	--el-border-color-light: rgba(211, 185, 132, 0.14);
+	--el-border-color-lighter: rgba(211, 185, 132, 0.1);
+	--el-text-color-primary: var(--page-ink);
+	--el-text-color-regular: var(--muted-ink);
+	--el-fill-color-blank: var(--paper-strong);
+	--el-fill-color-light: rgba(55, 51, 42, 0.78);
+	--el-bg-color: var(--paper-strong);
+	--el-bg-color-overlay: #27251f;
+	background:
+		radial-gradient(ellipse at 14% 8%, rgba(217, 194, 141, 0.14), transparent 28%),
+		radial-gradient(ellipse at 84% 4%, rgba(84, 113, 92, 0.16), transparent 26%),
+		linear-gradient(120deg, rgba(194, 72, 60, 0.13), transparent 26%),
+		repeating-linear-gradient(
+			91deg,
+			rgba(232, 211, 163, 0.045) 0 1px,
+			transparent 1px 44px
+		),
+		linear-gradient(180deg, #10100d 0%, var(--page-bg) 58%, #0b0c0a 100%);
+}
+
+.knowledge-shell::before {
+	position: fixed;
+	inset: 0;
+	z-index: -2;
+	pointer-events: none;
+	content: "";
+	background:
+		linear-gradient(90deg, transparent 0 12%, rgba(75, 51, 24, 0.06) 12% 12.4%, transparent 12.4%),
+		repeating-linear-gradient(
+			0deg,
+			rgba(255, 255, 255, 0.1) 0 1px,
+			transparent 1px 5px
+		);
+	mix-blend-mode: multiply;
+	opacity: 0.72;
+}
+
+.knowledge-shell--ink::before {
+	background:
+		linear-gradient(90deg, transparent 0 11%, rgba(210, 184, 129, 0.08) 11% 11.3%, transparent 11.3%),
+		repeating-linear-gradient(
+			0deg,
+			rgba(244, 230, 190, 0.04) 0 1px,
+			transparent 1px 6px
+		);
+	mix-blend-mode: screen;
+	opacity: 0.54;
+}
+
+.knowledge-shell::after {
+	position: fixed;
+	right: -7vw;
+	bottom: -13vh;
+	z-index: -1;
+	width: min(58vw, 760px);
+	aspect-ratio: 1.25;
+	pointer-events: none;
+	content: "";
+	background:
+		radial-gradient(ellipse at 48% 58%, rgba(43, 36, 25, 0.22), transparent 0 35%),
+		radial-gradient(ellipse at 36% 44%, rgba(43, 36, 25, 0.16), transparent 0 30%),
+		radial-gradient(ellipse at 64% 30%, rgba(43, 36, 25, 0.1), transparent 0 26%);
+	filter: blur(18px);
+	opacity: 0.38;
+	transform: rotate(-10deg);
+}
+
+.knowledge-shell--ink::after {
+	background:
+		radial-gradient(ellipse at 48% 58%, rgba(245, 229, 187, 0.18), transparent 0 35%),
+		radial-gradient(ellipse at 36% 44%, rgba(111, 176, 138, 0.14), transparent 0 30%),
+		radial-gradient(ellipse at 64% 30%, rgba(194, 72, 60, 0.11), transparent 0 26%);
+	opacity: 0.32;
+}
+
+.hero-band {
+	position: relative;
+	align-items: center;
+	margin-bottom: 22px;
+	padding: 28px 30px;
+	border: 1px solid var(--line);
+	border-radius: 8px;
+	background:
+		linear-gradient(100deg, var(--paper-strong), rgba(255, 255, 255, 0) 72%),
+		linear-gradient(180deg, rgba(255, 255, 255, 0.34), transparent),
+		var(--paper);
+	box-shadow: var(--shadow), var(--inner-shadow);
+	backdrop-filter: blur(8px);
+}
+
+.knowledge-shell--ink .hero-band {
+	background:
+		linear-gradient(100deg, rgba(37, 35, 29, 0.98), rgba(21, 21, 18, 0.64) 78%),
+		linear-gradient(180deg, rgba(255, 255, 255, 0.04), transparent),
+		var(--paper);
+}
+
+.hero-band::before {
+	position: absolute;
+	inset: 10px;
+	pointer-events: none;
+	content: "";
+	border: 1px solid rgba(143, 103, 44, 0.2);
+	border-radius: 6px;
+}
+
+.hero-band__copy {
+	position: relative;
+	max-width: 820px;
+}
+
+.hero-band__eyebrow {
+	color: var(--accent);
+	font-size: 12px;
+	font-weight: 700;
+	letter-spacing: 0.12em;
+}
+
+.hero-band__title {
+	font-family: var(--font-title);
+	font-size: clamp(42px, 5vw, 72px);
+	font-weight: 400;
+	letter-spacing: 0;
+	text-shadow: 0 2px 0 rgba(255, 255, 255, 0.28);
+}
+
+.knowledge-shell--ink .hero-band__title {
+	text-shadow: 0 0 22px rgba(208, 169, 85, 0.12);
+}
+
+.hero-band__summary {
+	max-width: 760px;
+	color: var(--muted-ink);
+	font-size: 15px;
+	line-height: 1.9;
+}
+
+.hero-band__tools {
+	position: relative;
+	display: flex;
+	flex-direction: column;
+	align-items: flex-end;
+	gap: 12px;
+	min-width: 260px;
+}
+
+.hero-band__status {
+	min-width: auto;
+	padding: 10px 12px;
+	border: 1px solid var(--line);
+	border-radius: 6px;
+	background: var(--paper-soft);
+}
+
+.hero-band__model {
+	color: var(--muted-ink);
+	font-weight: 700;
+}
+
+.theme-toggle.el-button {
+	height: 38px;
+	border-color: var(--line-strong);
+	color: var(--page-ink);
+	background:
+		linear-gradient(180deg, rgba(255, 255, 255, 0.24), transparent),
+		var(--paper-soft);
+}
+
+.theme-toggle.el-button:hover {
+	border-color: var(--gold);
+	color: var(--accent);
+	background: var(--paper-strong);
+}
+
+.workspace-alert {
+	overflow: hidden;
+	border-radius: 8px;
+	box-shadow: var(--shadow);
+}
+
+.metric-grid {
+	gap: 16px;
+	margin-bottom: 18px;
+}
+
+.metric-card,
+.workspace-panel {
+	overflow: hidden;
+	border: 1px solid var(--line);
+	border-radius: 8px;
+	background:
+		linear-gradient(180deg, rgba(255, 255, 255, 0.34), transparent 46%),
+		var(--paper);
+	box-shadow: var(--shadow), var(--inner-shadow);
+	backdrop-filter: blur(7px);
+}
+
+.knowledge-shell--ink .metric-card,
+.knowledge-shell--ink .workspace-panel {
+	background:
+		linear-gradient(180deg, rgba(255, 255, 255, 0.045), transparent 50%),
+		var(--paper);
+}
+
+.metric-card :deep(.el-card__body) {
+	grid-template-columns: 42px 1fr;
+	padding: 18px;
+}
+
+.metric-card__icon {
+	width: 42px;
+	height: 42px;
+	border: 1px solid var(--line);
+	border-radius: 8px;
+	color: var(--accent);
+	background:
+		linear-gradient(135deg, rgba(178, 138, 61, 0.22), transparent),
+		var(--paper-soft);
+}
+
+.metric-card__label,
+.panel-header__subtitle,
+.upload-drop__tip,
+.upload-progress__head,
+.search-result__meta {
+	color: var(--muted-ink);
+}
+
+.metric-card__value {
+	color: var(--page-ink);
+	font-family: var(--font-title);
+	font-size: 34px;
+	font-weight: 400;
+}
+
+.metric-card__value--text {
+	font-family: var(--font-body);
+	font-size: 16px;
+	font-weight: 700;
+}
+
+.workspace-layout {
+	gap: 18px;
+	margin-bottom: 18px;
+}
+
+.workspace-panel :deep(.el-card__header) {
+	padding: 18px 20px;
+	border-bottom: 1px solid var(--line);
+	background:
+		linear-gradient(90deg, rgba(139, 31, 31, 0.08), transparent 62%),
+		rgba(255, 255, 255, 0.08);
+}
+
+.workspace-panel :deep(.el-card__body) {
+	padding: 20px;
+}
+
+.panel-header__title {
+	position: relative;
+	padding-left: 14px;
+	color: var(--page-ink);
+	font-size: 18px;
+	font-weight: 700;
+}
+
+.panel-header__title::before {
+	position: absolute;
+	top: 0.25em;
+	bottom: 0.25em;
+	left: 0;
+	width: 3px;
+	content: "";
+	border-radius: 2px;
+	background: var(--accent);
+}
+
+.repository-form__submit.el-button,
+.ask-form > .el-button {
+	width: 100%;
+}
+
+.upload-drop__icon {
+	color: var(--accent-2);
+	font-size: 38px;
+}
+
+.upload-drop__title {
+	color: var(--page-ink);
+	font-weight: 700;
+}
+
+.search-result {
+	border: 1px solid var(--line);
+	border-radius: 8px;
+	color: var(--page-ink);
+	background:
+		linear-gradient(90deg, rgba(178, 138, 61, 0.1), transparent 54%),
+		var(--paper-strong);
+	box-shadow: var(--inner-shadow);
+}
+
+.search-result__head strong {
+	color: var(--page-ink);
+}
+
+.search-result__preview {
+	color: var(--page-ink);
+}
+
+.answer-panel__title {
+	color: var(--page-ink);
+	font-size: 16px;
+}
+
+.answer-panel__content {
+	border: 1px solid var(--line);
+	border-radius: 8px;
+	color: var(--page-ink);
+	background:
+		linear-gradient(180deg, rgba(255, 255, 255, 0.24), transparent 42%),
+		var(--paper-strong);
+	box-shadow: inset 4px 0 0 var(--accent-2);
+}
+
+.answer-panel__placeholder {
+	border: 1px dashed var(--line-strong);
+	color: var(--muted-ink);
+	background: var(--paper-soft);
+}
+
+.knowledge-shell :deep(.el-button) {
+	border-radius: 6px;
+	font-family: var(--font-body);
+	font-weight: 700;
+}
+
+.knowledge-shell :deep(.el-button--primary) {
+	border-color: var(--accent);
+	background:
+		linear-gradient(180deg, rgba(255, 255, 255, 0.14), transparent),
+		var(--accent);
+	box-shadow: 0 8px 18px rgba(139, 31, 31, 0.18);
+}
+
+.knowledge-shell :deep(.el-input__wrapper),
+.knowledge-shell :deep(.el-textarea__inner) {
+	border-radius: 6px;
+	background: var(--paper-strong);
+	box-shadow: 0 0 0 1px var(--line) inset;
+}
+
+.knowledge-shell :deep(.el-input__wrapper.is-focus),
+.knowledge-shell :deep(.el-textarea__inner:focus) {
+	box-shadow: 0 0 0 1px var(--accent) inset;
+}
+
+.knowledge-shell :deep(.el-input-group__append) {
+	border-color: var(--line);
+	background: var(--paper-soft);
+	box-shadow: 0 0 0 1px var(--line) inset;
+}
+
+.knowledge-shell :deep(.el-form-item__label) {
+	color: var(--page-ink);
+	font-weight: 700;
+}
+
+.knowledge-shell :deep(.el-divider__text) {
+	color: var(--muted-ink);
+	background: var(--paper);
+}
+
+.knowledge-shell :deep(.el-upload-dragger) {
+	border-color: var(--line-strong);
+	border-radius: 8px;
+	background:
+		linear-gradient(135deg, rgba(47, 107, 80, 0.1), transparent 50%),
+		var(--paper-soft);
+}
+
+.knowledge-shell :deep(.el-upload-dragger:hover) {
+	border-color: var(--accent-2);
+}
+
+.knowledge-shell :deep(.el-table),
+.knowledge-shell :deep(.el-table__expanded-cell) {
+	color: var(--page-ink);
+	background: transparent;
+}
+
+.knowledge-shell :deep(.el-table th.el-table__cell) {
+	color: var(--page-ink);
+	background: rgba(178, 138, 61, 0.14);
+}
+
+.knowledge-shell :deep(.el-table tr),
+.knowledge-shell :deep(.el-table td.el-table__cell) {
+	background: transparent;
+}
+
+.knowledge-shell :deep(.el-table__row:hover > td.el-table__cell) {
+	background: rgba(139, 31, 31, 0.08);
+}
+
+.knowledge-shell :deep(.el-table__inner-wrapper::before),
+.knowledge-shell :deep(.el-table__border-left-patch) {
+	background-color: var(--line);
+}
+
+.knowledge-shell :deep(.el-descriptions__label.el-descriptions__cell),
+.knowledge-shell :deep(.el-descriptions__content.el-descriptions__cell) {
+	border-color: var(--line);
+	color: var(--page-ink);
+	background: var(--paper-strong);
+}
+
+.knowledge-shell :deep(.el-empty__description p) {
+	color: var(--muted-ink);
+}
+
+.knowledge-shell :deep(.el-progress-bar__outer) {
+	background: rgba(93, 66, 36, 0.14);
+}
+
+.knowledge-shell :deep(.el-progress-bar__inner) {
+	background:
+		linear-gradient(90deg, var(--accent), var(--gold));
+}
+
+.knowledge-shell :deep(.el-tag) {
+	border-radius: 6px;
+	font-family: var(--font-body);
+	font-weight: 700;
+}
+
+.markdown-body :deep(h1),
+.markdown-body :deep(h2),
+.markdown-body :deep(h3),
+.markdown-body :deep(h4),
+.markdown-body :deep(strong) {
+	color: var(--page-ink);
+}
+
+.markdown-body :deep(h2) {
+	border-bottom-color: var(--line);
+}
+
+.markdown-body :deep(li::marker),
+.markdown-body :deep(a) {
+	color: var(--accent-2);
+}
+
+.markdown-body :deep(blockquote) {
+	border-left-color: var(--gold);
+	color: var(--page-ink);
+	background: rgba(178, 138, 61, 0.13);
+}
+
+.markdown-body :deep(code) {
+	border-color: var(--line);
+	color: var(--accent-2);
+	background: rgba(47, 107, 80, 0.11);
+}
+
+.markdown-body :deep(pre) {
+	border-color: rgba(208, 169, 85, 0.32);
+	color: #f4ead2;
+	background:
+		linear-gradient(180deg, rgba(255, 255, 255, 0.05), transparent 38px),
+		#151411;
+}
+
+.markdown-body :deep(th),
+.markdown-body :deep(td) {
+	border-color: var(--line);
+}
+
+.markdown-body :deep(th) {
+	color: var(--page-ink);
+	background: rgba(178, 138, 61, 0.13);
+}
+
+.markdown-body :deep(td) {
+	background: rgba(255, 255, 255, 0.06);
+}
+
+.markdown-body :deep(hr) {
+	background: var(--line);
+}
+
+@media (max-width: 760px) {
+	.knowledge-shell {
+		padding: 16px;
+	}
+
+	.hero-band {
+		padding: 22px 18px;
+	}
+
+	.hero-band__tools,
+	.hero-band__status {
+		align-items: flex-start;
+		width: 100%;
+	}
+
+	.hero-band__status {
+		flex-wrap: wrap;
+	}
+
+	.hero-band__title {
+		font-size: 44px;
 	}
 }
 </style>
