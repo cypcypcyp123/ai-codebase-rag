@@ -44,4 +44,3 @@ npm run dev:server
 npm run dev:web
 ```
 
-本次仅搭建结构框架，未执行安装、构建或打包命令。
