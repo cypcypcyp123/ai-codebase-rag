@@ -7,13 +7,14 @@ import type {
 	ChunkRepositoryResponse,
 	CodeRepository,
 	HealthResponse,
+	IndexRepositoryProgressEvent,
 	IndexRepositoryResponse,
 	KnowledgeDocument,
 	ScanRepositoryResponse,
 	SearchCodeRequest,
 	SearchCodeResponse,
 } from "@ai-codebase-rag/shared";
-import { requestForm, requestJson } from "./http";
+import { requestJson } from "./http";
 import { resolveApiUrl } from "./http";
 
 interface CreateRepositoryRequest {
@@ -97,6 +98,51 @@ export function indexRepository(repositoryId: string) {
 			body: JSON.stringify({}),
 		},
 	);
+}
+
+interface IndexRepositoryStreamHandlers {
+	onProgress: (event: IndexRepositoryProgressEvent) => void;
+	onError: (message: string) => void;
+	onDone: (result: IndexRepositoryResponse) => void;
+}
+
+export async function indexRepositoryStream(
+	repositoryId: string,
+	handlers: IndexRepositoryStreamHandlers,
+) {
+	const response = await fetch(
+		resolveApiUrl(`/api/repositories/${repositoryId}/index/stream`),
+		{
+			method: "POST",
+			headers: {
+				"content-type": "application/json",
+			},
+			body: JSON.stringify({}),
+		},
+	);
+
+	if (!response.ok || !response.body) {
+		throw new Error(`请求失败：${response.status}`);
+	}
+
+	const reader = response.body.getReader();
+	const decoder = new TextDecoder();
+	let buffer = "";
+
+	while (true) {
+		const { value, done } = await reader.read();
+		if (done) {
+			break;
+		}
+
+		buffer += decoder.decode(value, { stream: true });
+		const events = buffer.split("\n\n");
+		buffer = events.pop() ?? "";
+
+		for (const eventText of events) {
+			handleIndexSseEvent(eventText, handlers);
+		}
+	}
 }
 
 export function searchRepository(
@@ -203,6 +249,34 @@ function handleSseEvent(
 
 	if (eventName === "done") {
 		handlers.onDone();
+	}
+}
+
+function handleIndexSseEvent(
+	eventText: string,
+	handlers: IndexRepositoryStreamHandlers,
+) {
+	const eventName = eventText.match(/^event: (.+)$/m)?.[1];
+	const dataText = eventText.match(/^data: (.+)$/m)?.[1];
+
+	if (!eventName || !dataText) {
+		return;
+	}
+
+	const data = JSON.parse(dataText) as unknown;
+
+	if (eventName === "progress") {
+		handlers.onProgress(data as IndexRepositoryProgressEvent);
+		return;
+	}
+
+	if (eventName === "error") {
+		handlers.onError((data as { message?: string }).message ?? "写入索引失败");
+		return;
+	}
+
+	if (eventName === "done") {
+		handlers.onDone(data as IndexRepositoryResponse);
 	}
 }
 

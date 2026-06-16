@@ -8,6 +8,9 @@ const envSchema = z.object({
   OLLAMA_CHAT_MODEL: z.string().default('qwen3.5:4b'),
   OLLAMA_EMBED_MODEL: z.string().default('nomic-embed-text'),
   OLLAMA_EMBED_BATCH_SIZE: z.coerce.number().int().positive().default(8),
+  OLLAMA_NUM_CTX: z.coerce.number().int().positive().default(8192),
+  OLLAMA_NUM_PREDICT: z.coerce.number().int().positive().default(2048),
+  OLLAMA_THINK: z.enum(['true', 'false']).default('false').transform((value) => value === 'true'),
   CHROMA_HOST: z.string().default('127.0.0.1'),
   CHROMA_PORT: z.coerce.number().int().positive().default(8000),
   CHROMA_COLLECTION: z.string().default('code_chunks'),
@@ -29,7 +32,10 @@ export const config = {
     baseUrl: env.OLLAMA_BASE_URL,
     chatModel: env.OLLAMA_CHAT_MODEL,
     embedModel: env.OLLAMA_EMBED_MODEL,
-    embedBatchSize: env.OLLAMA_EMBED_BATCH_SIZE
+    embedBatchSize: env.OLLAMA_EMBED_BATCH_SIZE,
+    numCtx: env.OLLAMA_NUM_CTX,
+    numPredict: env.OLLAMA_NUM_PREDICT,
+    think: env.OLLAMA_THINK
   },
   chroma: {
     host: env.CHROMA_HOST,

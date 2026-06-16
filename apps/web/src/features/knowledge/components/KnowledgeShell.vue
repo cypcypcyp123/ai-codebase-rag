@@ -13,6 +13,7 @@ import {
 	Moon,
 	Refresh,
 	Search,
+	Setting,
 	Sunny,
 	Upload,
 	UploadFilled,
@@ -35,10 +36,12 @@ const {
 	chunkResult,
 	searchResult,
 	askResult,
+	conversationMessages,
 	streamingAnswer,
 	streamingCitations,
 	uploadProgress,
 	uploadStage,
+	indexProgress,
 	errorMessage,
 	loading,
 	repositoryForm,
@@ -53,6 +56,7 @@ const {
 	runIndex,
 	runSearch,
 	runAskStream,
+	clearConversation,
 	selectRepository,
 } = useRepositoryWorkspace();
 
@@ -63,11 +67,23 @@ const markdown = new MarkdownIt({
 const selectedRepositoryName = computed(
 	() => selectedRepository.value?.name ?? "未选择仓库",
 );
-const answerMarkdown = computed(
-	() => streamingAnswer.value || askResult.value?.answer || "",
+const assistantMessages = computed(() =>
+	conversationMessages.value.filter((message) => message.role === "assistant"),
 );
-const renderedAnswer = computed(() =>
-	DOMPurify.sanitize(markdown.render(answerMarkdown.value)),
+const answerMarkdown = computed(
+	() =>
+		assistantMessages.value.at(-1)?.content || askResult.value?.answer || "",
+);
+const renderedConversationMessages = computed(() =>
+	conversationMessages.value.map((message, index) => ({
+		id: `${message.role}-${index}`,
+		role: message.role,
+		content: message.content,
+		html:
+			message.role === "assistant"
+				? DOMPurify.sanitize(markdown.render(message.content || "正在生成..."))
+				: "",
+	})),
 );
 const answerCitations = computed(() =>
 	streamingCitations.value.length
@@ -75,9 +91,49 @@ const answerCitations = computed(() =>
 		: (askResult.value?.citations ?? []),
 );
 const hasAnswerPanelContent = computed(() =>
-	Boolean(answerMarkdown.value || loading.ask || answerCitations.value.length),
+	Boolean(
+		conversationMessages.value.length ||
+		loading.ask ||
+		answerCitations.value.length,
+	),
 );
+const hasIndexProgress = computed(() =>
+	Boolean(
+		indexProgress.value && (loading.index || indexProgress.value.percent > 0),
+	),
+);
+const indexProgressText = computed(() => {
+	if (!indexProgress.value) {
+		return "";
+	}
+
+	const parts = [indexProgress.value.message];
+	if (indexProgress.value.batchCount) {
+		parts.push(
+			`批次 ${indexProgress.value.batchIndex}/${indexProgress.value.batchCount}`,
+		);
+	}
+	if (indexProgress.value.totalChunks) {
+		parts.push(
+			`分片 ${indexProgress.value.processedChunks}/${indexProgress.value.totalChunks}`,
+		);
+	}
+
+	return parts.join(" · ");
+});
+const indexProgressStatus = computed(() => {
+	if (indexProgress.value?.stage === "completed") {
+		return "success";
+	}
+
+	if (indexProgress.value?.stage === "failed") {
+		return "exception";
+	}
+
+	return undefined;
+});
 const answerCopied = shallowRef(false);
+const askSettingsVisible = shallowRef(false);
 const themeMode = shallowRef<"paper" | "ink">("paper");
 const isInkTheme = computed(() => themeMode.value === "ink");
 const shellClasses = computed(() => ({
@@ -85,10 +141,18 @@ const shellClasses = computed(() => ({
 	"knowledge-shell--paper": themeMode.value === "paper",
 	"knowledge-shell--ink": themeMode.value === "ink",
 }));
-const themeLabel = computed(() => (isInkTheme.value ? "古风宣纸" : "水墨暗黑"));
+const themeLabel = computed(() => (isInkTheme.value ? "浅色模式" : "深空模式"));
 
 function toggleThemeMode() {
 	themeMode.value = isInkTheme.value ? "paper" : "ink";
+}
+
+function openAskSettings() {
+	askSettingsVisible.value = true;
+}
+
+function repositoryRowClassName({ row }: { row: CodeRepository }) {
+	return row.id === selectedRepositoryId.value ? "repository-row--selected" : "";
 }
 
 function statusType(status: CodeRepository["status"]) {
@@ -147,11 +211,12 @@ async function copyAnswerMarkdown() {
 	<main :class="shellClasses">
 		<section class="hero-band">
 			<div class="hero-band__copy">
-				<p class="hero-band__eyebrow">AI Codebase Intelligence · 江湖卷宗</p>
+				<p class="hero-band__eyebrow">Neural Codebase Intelligence</p>
 				<h1 class="hero-band__title">代码知识库平台</h1>
 				<p class="hero-band__summary">
-					面向 Vue、React、Node 项目的源码扫描、代码分片、ChromaDB
-					索引与语义检索工作台。以宣纸为案、水墨为界，把仓库脉络铺成可追问的代码长卷。
+					连接本地仓库、ChromaDB
+					向量索引和本地模型，把源码扫描、语义检索和上下文问答汇聚到一个 AI
+					代码分析中枢。
 				</p>
 			</div>
 
@@ -314,9 +379,25 @@ async function copyAnswerMarkdown() {
 					height="286"
 					highlight-current-row
 					class="repository-table"
+					:row-class-name="repositoryRowClassName"
 					@row-click="selectRepository"
 				>
-					<el-table-column prop="name" label="名称" min-width="150" />
+					<el-table-column prop="name" label="名称" min-width="150">
+						<template #default="{ row }">
+							<div class="repository-name-cell">
+								<span class="repository-name-cell__dot"></span>
+								<span class="repository-name-cell__text">{{ row.name }}</span>
+								<el-tag
+									v-if="row.id === selectedRepositoryId"
+									size="small"
+									type="success"
+									effect="dark"
+								>
+									当前
+								</el-tag>
+							</div>
+						</template>
+					</el-table-column>
 					<el-table-column prop="framework" label="类型" width="96">
 						<template #default="{ row }">
 							<el-tag size="small" effect="plain">{{ row.framework }}</el-tag>
@@ -375,6 +456,22 @@ async function copyAnswerMarkdown() {
 						写入索引
 					</el-button>
 				</el-space>
+
+				<div v-if="hasIndexProgress" class="index-progress">
+					<div class="index-progress__head">
+						<span>{{ indexProgressText }}</span>
+						<strong>{{ indexProgress?.percent ?? 0 }}%</strong>
+					</div>
+					<el-progress
+						:percentage="indexProgress?.percent ?? 0"
+						:status="indexProgressStatus"
+						:indeterminate="
+							loading.index &&
+							(indexProgress?.stage === 'scanning' ||
+								!indexProgress?.totalChunks)
+						"
+					/>
+				</div>
 
 				<div class="pipeline-result">
 					<el-descriptions :column="3" border>
@@ -459,7 +556,7 @@ async function copyAnswerMarkdown() {
 		</section>
 
 		<section class="qa-layout">
-			<el-card shadow="never" class="workspace-panel">
+			<el-card shadow="never" class="workspace-panel qa-panel">
 				<template #header>
 					<div class="panel-header">
 						<div>
@@ -468,38 +565,18 @@ async function copyAnswerMarkdown() {
 								基于当前仓库检索出的代码片段，让本地模型生成解释。
 							</p>
 						</div>
+						<el-button :icon="Setting" @click="openAskSettings">
+							配置
+						</el-button>
 					</div>
 				</template>
 
-				<el-form :model="askForm" class="ask-form">
-					<el-form-item>
-						<el-input
-							v-model="askForm.question"
-							type="textarea"
-							:rows="3"
-							placeholder="例如：这个项目的代码扫描器在哪里实现？"
-							clearable
-						/>
-					</el-form-item>
-					<el-button
-						type="primary"
-						:icon="ChatDotRound"
-						:loading="loading.ask"
-						:disabled="!selectedRepositoryId"
-						@click="runAskStream"
-					>
-						流式提问
-					</el-button>
-				</el-form>
-
-				<el-empty
-					v-if="!hasAnswerPanelContent"
-					description="暂无问答结果"
-					:image-size="96"
-				/>
+				<div v-if="!hasAnswerPanelContent" class="conversation-empty">
+					<el-empty description="暂无对话" :image-size="96" />
+				</div>
 				<div v-else class="answer-panel">
 					<div class="answer-panel__title-row">
-						<h3 class="answer-panel__title">回答</h3>
+						<h3 class="answer-panel__title">对话</h3>
 						<div class="answer-panel__actions">
 							<el-tag v-if="loading.ask" type="warning">生成中</el-tag>
 							<el-button
@@ -513,17 +590,30 @@ async function copyAnswerMarkdown() {
 							</el-button>
 						</div>
 					</div>
-					<div
-						v-if="answerMarkdown"
-						class="answer-panel__content markdown-body"
-						v-html="renderedAnswer"
-					></div>
-					<div v-else class="answer-panel__placeholder">
-						{{
-							loading.ask
-								? "正在生成回答..."
-								: "未收到回答文本，请查看上方错误提示。"
-						}}
+					<div class="conversation-list">
+						<article
+							v-for="message in renderedConversationMessages"
+							:key="message.id"
+							:class="[
+								'conversation-message',
+								`conversation-message--${message.role}`,
+							]"
+						>
+							<div class="conversation-message__role">
+								{{ message.role === "user" ? "你" : "助手" }}
+							</div>
+							<p
+								v-if="message.role === 'user'"
+								class="conversation-message__text"
+							>
+								{{ message.content }}
+							</p>
+							<div
+								v-else
+								class="conversation-message__content markdown-body"
+								v-html="message.html"
+							></div>
+						</article>
 					</div>
 					<h3 v-if="answerCitations.length" class="answer-panel__title">
 						引用代码
@@ -546,8 +636,99 @@ async function copyAnswerMarkdown() {
 						</el-table-column>
 					</el-table>
 				</div>
+
+				<el-form :model="askForm" class="ask-form">
+					<el-form-item>
+						<el-input
+							v-model="askForm.question"
+							type="textarea"
+							:rows="3"
+							placeholder="例如：这个项目的代码扫描器在哪里实现？"
+							clearable
+							@keydown.enter.exact.prevent="runAskStream"
+						/>
+					</el-form-item>
+					<div class="ask-form__actions">
+						<el-button
+							type="primary"
+							:icon="ChatDotRound"
+							:loading="loading.ask"
+							:disabled="!selectedRepositoryId"
+							@click="runAskStream"
+						>
+							发送
+						</el-button>
+						<el-button
+							:disabled="!conversationMessages.length || loading.ask"
+							@click="clearConversation"
+						>
+							清空对话
+						</el-button>
+					</div>
+				</el-form>
 			</el-card>
 		</section>
+
+		<el-dialog
+			v-model="askSettingsVisible"
+			title="回答范围"
+			width="520px"
+			class="ask-settings-dialog"
+		>
+			<p class="ask-settings__hint">
+				回答不准或提示“内容被截断”时，优先调大“最多参考代码量”。
+			</p>
+			<el-form label-position="top" :model="askForm" class="ask-settings-form">
+				<el-form-item label="最多参考几个代码片段">
+					<el-input-number
+						v-model="askForm.limit"
+						:min="1"
+						:max="10"
+						:step="1"
+						controls-position="right"
+					/>
+					<p class="ask-settings__help">
+						数值越大，模型会看更多搜索结果；太大会更慢，也可能引入无关代码。
+					</p>
+				</el-form-item>
+				<el-form-item label="最多参考代码量">
+					<el-input-number
+						v-model="askForm.contextMaxChars"
+						:min="2000"
+						:max="50000"
+						:step="1000"
+						controls-position="right"
+					/>
+					<p class="ask-settings__help">
+						控制一次提问最多塞给模型多少代码。看不全文件时调大这里。
+					</p>
+				</el-form-item>
+				<el-form-item label="单段代码最多保留多少">
+					<el-input-number
+						v-model="askForm.snippetMaxChars"
+						:min="500"
+						:max="20000"
+						:step="500"
+						:disabled="askForm.includeFullContext"
+						controls-position="right"
+					/>
+					<p class="ask-settings__help">
+						限制每个命中片段的长度，避免一个大文件挤掉其他相关文件。
+					</p>
+				</el-form-item>
+				<el-form-item label="优先看完整代码片段">
+					<el-switch v-model="askForm.includeFullContext" />
+					<p class="ask-settings__help">
+						开启后会尽量不截断单个片段，适合查看组件 props、完整函数或类。
+					</p>
+				</el-form-item>
+			</el-form>
+			<template #footer>
+				<el-button type="primary" @click="askSettingsVisible = false">
+					完成
+				</el-button>
+			</template>
+		</el-dialog>
 	</main>
 </template>
 
@@ -712,13 +893,28 @@ async function copyAnswerMarkdown() {
 .upload-drop__tip {
 	color: #718176;
 	font-size: 12px;
+	margin-top: 4px;
 }
 
 .upload-progress {
 	margin-top: 14px;
 }
 
+.index-progress {
+	margin-top: 16px;
+}
+
 .upload-progress__head {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 12px;
+	margin-bottom: 8px;
+	color: #52665b;
+	font-size: 13px;
+}
+
+.index-progress__head {
 	display: flex;
 	align-items: center;
 	justify-content: space-between;
@@ -734,6 +930,10 @@ async function copyAnswerMarkdown() {
 
 .pipeline-result {
 	margin-top: 18px;
+	padding: 12px;
+	border: 1px solid var(--line);
+	border-radius: 8px;
+	background: var(--paper-soft);
 }
 
 .search-form {
@@ -746,6 +946,7 @@ async function copyAnswerMarkdown() {
 	max-height: 420px;
 	overflow: auto;
 	padding-right: 4px;
+	scrollbar-width: thin;
 }
 
 .search-result {
@@ -753,6 +954,16 @@ async function copyAnswerMarkdown() {
 	border: 1px solid #dfe8e2;
 	border-radius: 8px;
 	background: #fbfcfa;
+	transition:
+		border-color 160ms ease,
+		box-shadow 160ms ease,
+		transform 160ms ease;
+}
+
+.search-result:hover {
+	border-color: var(--line-strong);
+	box-shadow: 0 10px 22px rgba(66, 45, 22, 0.1);
+	transform: translateY(-1px);
 }
 
 .search-result__head {
@@ -782,11 +993,67 @@ async function copyAnswerMarkdown() {
 	margin-bottom: 16px;
 }
 
+.qa-panel :deep(.el-card__body) {
+	display: flex;
+	flex-direction: column;
+	min-height: 520px;
+}
+
+.conversation-empty {
+	display: grid;
+	min-height: 300px;
+	place-items: center;
+	border: 1px dashed var(--line);
+	border-radius: 8px;
+	background:
+		linear-gradient(135deg, rgba(47, 107, 80, 0.08), transparent 54%),
+		var(--paper-soft);
+}
+
 .ask-form {
-	margin-bottom: 16px;
+	margin-top: 16px;
+	padding: 14px;
+	border: 1px solid var(--line);
+	border-radius: 8px;
+	background:
+		linear-gradient(180deg, rgba(255, 255, 255, 0.28), transparent 58%),
+		var(--paper-strong);
+	box-shadow: var(--inner-shadow);
+}
+
+.ask-form__actions {
+	display: flex;
+	align-items: center;
+	justify-content: flex-end;
+	gap: 10px;
+}
+
+.ask-settings-form {
+	display: grid;
+	gap: 2px;
+}
+
+.ask-settings__hint {
+	margin: -4px 0 18px;
+	color: var(--muted-ink);
+	font-size: 13px;
+	line-height: 1.7;
+}
+
+.ask-settings__help {
+	width: 100%;
+	margin: 7px 0 0;
+	color: var(--muted-ink);
+	font-size: 12px;
+	line-height: 1.6;
+}
+
+.ask-settings-form .el-input-number {
+	width: 100%;
 }
 
 .answer-panel {
+	flex: 1;
 	padding-top: 4px;
 }
 
@@ -807,6 +1074,67 @@ async function copyAnswerMarkdown() {
 	align-items: center;
 	gap: 8px;
 	flex-shrink: 0;
+}
+
+.conversation-list {
+	display: grid;
+	gap: 12px;
+	max-height: 560px;
+	margin-bottom: 18px;
+	padding: 2px 6px 2px 2px;
+	overflow: auto;
+	scrollbar-width: thin;
+}
+
+.conversation-message {
+	max-width: min(840px, 92%);
+	padding: 14px 16px;
+	border: 1px solid #d9e4dd;
+	border-radius: 8px;
+	overflow-wrap: anywhere;
+	background: #fbfcfa;
+	transition:
+		border-color 160ms ease,
+		box-shadow 160ms ease,
+		transform 160ms ease;
+}
+
+.conversation-message:hover {
+	border-color: var(--line-strong);
+	box-shadow: 0 10px 22px rgba(66, 45, 22, 0.1);
+	transform: translateY(-1px);
+}
+
+.conversation-message--user {
+	justify-self: end;
+	border-color: rgba(139, 31, 31, 0.28);
+	background: rgba(139, 31, 31, 0.08);
+}
+
+.conversation-message--assistant {
+	justify-self: start;
+	box-shadow: inset 3px 0 0 #8fb99f;
+}
+
+.conversation-message__role {
+	margin-bottom: 8px;
+	color: #6b7b72;
+	font-size: 12px;
+	font-weight: 700;
+}
+
+.conversation-message__text {
+	margin: 0;
+	color: #26362d;
+	font-size: 14px;
+	line-height: 1.75;
+	white-space: pre-wrap;
+}
+
+.conversation-message__content {
+	color: #26362d;
+	font-size: 14px;
+	line-height: 1.85;
 }
 
 .answer-panel__content {
@@ -1114,8 +1442,16 @@ async function copyAnswerMarkdown() {
 	--el-bg-color: var(--paper-strong);
 	--el-bg-color-overlay: #27251f;
 	background:
-		radial-gradient(ellipse at 14% 8%, rgba(217, 194, 141, 0.14), transparent 28%),
-		radial-gradient(ellipse at 84% 4%, rgba(84, 113, 92, 0.16), transparent 26%),
+		radial-gradient(
+			ellipse at 14% 8%,
+			rgba(217, 194, 141, 0.14),
+			transparent 28%
+		),
+		radial-gradient(
+			ellipse at 84% 4%,
+			rgba(84, 113, 92, 0.16),
+			transparent 26%
+		),
 		linear-gradient(120deg, rgba(194, 72, 60, 0.13), transparent 26%),
 		repeating-linear-gradient(
 			91deg,
@@ -1132,7 +1468,12 @@ async function copyAnswerMarkdown() {
 	pointer-events: none;
 	content: "";
 	background:
-		linear-gradient(90deg, transparent 0 12%, rgba(75, 51, 24, 0.06) 12% 12.4%, transparent 12.4%),
+		linear-gradient(
+			90deg,
+			transparent 0 12%,
+			rgba(75, 51, 24, 0.06) 12% 12.4%,
+			transparent 12.4%
+		),
 		repeating-linear-gradient(
 			0deg,
 			rgba(255, 255, 255, 0.1) 0 1px,
@@ -1144,7 +1485,12 @@ async function copyAnswerMarkdown() {
 
 .knowledge-shell--ink::before {
 	background:
-		linear-gradient(90deg, transparent 0 11%, rgba(210, 184, 129, 0.08) 11% 11.3%, transparent 11.3%),
+		linear-gradient(
+			90deg,
+			transparent 0 11%,
+			rgba(210, 184, 129, 0.08) 11% 11.3%,
+			transparent 11.3%
+		),
 		repeating-linear-gradient(
 			0deg,
 			rgba(244, 230, 190, 0.04) 0 1px,
@@ -1164,9 +1510,21 @@ async function copyAnswerMarkdown() {
 	pointer-events: none;
 	content: "";
 	background:
-		radial-gradient(ellipse at 48% 58%, rgba(43, 36, 25, 0.22), transparent 0 35%),
-		radial-gradient(ellipse at 36% 44%, rgba(43, 36, 25, 0.16), transparent 0 30%),
-		radial-gradient(ellipse at 64% 30%, rgba(43, 36, 25, 0.1), transparent 0 26%);
+		radial-gradient(
+			ellipse at 48% 58%,
+			rgba(43, 36, 25, 0.22),
+			transparent 0 35%
+		),
+		radial-gradient(
+			ellipse at 36% 44%,
+			rgba(43, 36, 25, 0.16),
+			transparent 0 30%
+		),
+		radial-gradient(
+			ellipse at 64% 30%,
+			rgba(43, 36, 25, 0.1),
+			transparent 0 26%
+		);
 	filter: blur(18px);
 	opacity: 0.38;
 	transform: rotate(-10deg);
@@ -1174,9 +1532,21 @@ async function copyAnswerMarkdown() {
 
 .knowledge-shell--ink::after {
 	background:
-		radial-gradient(ellipse at 48% 58%, rgba(245, 229, 187, 0.18), transparent 0 35%),
-		radial-gradient(ellipse at 36% 44%, rgba(111, 176, 138, 0.14), transparent 0 30%),
-		radial-gradient(ellipse at 64% 30%, rgba(194, 72, 60, 0.11), transparent 0 26%);
+		radial-gradient(
+			ellipse at 48% 58%,
+			rgba(245, 229, 187, 0.18),
+			transparent 0 35%
+		),
+		radial-gradient(
+			ellipse at 36% 44%,
+			rgba(111, 176, 138, 0.14),
+			transparent 0 30%
+		),
+		radial-gradient(
+			ellipse at 64% 30%,
+			rgba(194, 72, 60, 0.11),
+			transparent 0 26%
+		);
 	opacity: 0.32;
 }
 
@@ -1387,6 +1757,10 @@ async function copyAnswerMarkdown() {
 	width: 100%;
 }
 
+.ask-form__actions .el-button {
+	min-width: 120px;
+}
+
 .upload-drop__icon {
 	color: var(--accent-2);
 	font-size: 38px;
@@ -1418,6 +1792,30 @@ async function copyAnswerMarkdown() {
 .answer-panel__title {
 	color: var(--page-ink);
 	font-size: 16px;
+}
+
+.conversation-message {
+	border-color: var(--line);
+	color: var(--page-ink);
+	background:
+		linear-gradient(180deg, rgba(255, 255, 255, 0.18), transparent 42%),
+		var(--paper-strong);
+}
+
+.conversation-message--user {
+	border-color: rgba(194, 72, 60, 0.38);
+	background:
+		linear-gradient(135deg, rgba(194, 72, 60, 0.14), transparent 56%),
+		var(--paper-soft);
+}
+
+.conversation-message__role {
+	color: var(--muted-ink);
+}
+
+.conversation-message__text,
+.conversation-message__content {
+	color: var(--page-ink);
 }
 
 .answer-panel__content {
@@ -1510,6 +1908,29 @@ async function copyAnswerMarkdown() {
 	background: rgba(139, 31, 31, 0.08);
 }
 
+.knowledge-shell--ink .repository-table :deep(.el-table__body),
+.knowledge-shell--ink .repository-table :deep(.el-table__row),
+.knowledge-shell--ink .repository-table :deep(td.el-table__cell),
+.knowledge-shell--ink .repository-table :deep(.cell) {
+	color: var(--page-ink);
+	background: transparent;
+}
+
+.knowledge-shell--ink .repository-table :deep(th.el-table__cell) {
+	color: #f7e8bd;
+	background: rgba(178, 138, 61, 0.18);
+}
+
+.knowledge-shell--ink
+	.repository-table
+	:deep(.el-table__row.current-row > td.el-table__cell),
+.knowledge-shell--ink
+	.repository-table
+	:deep(.el-table__row:hover > td.el-table__cell) {
+	color: #fff2ca;
+	background: rgba(194, 72, 60, 0.16);
+}
+
 .knowledge-shell :deep(.el-table__inner-wrapper::before),
 .knowledge-shell :deep(.el-table__border-left-patch) {
 	background-color: var(--line);
@@ -1531,8 +1952,7 @@ async function copyAnswerMarkdown() {
 }
 
 .knowledge-shell :deep(.el-progress-bar__inner) {
-	background:
-		linear-gradient(90deg, var(--accent), var(--gold));
+	background: linear-gradient(90deg, var(--accent), var(--gold));
 }
 
 .knowledge-shell :deep(.el-tag) {
@@ -1618,5 +2038,738 @@ async function copyAnswerMarkdown() {
 	.hero-band__title {
 		font-size: 44px;
 	}
+
+	.qa-panel :deep(.el-card__body) {
+		min-height: 440px;
+	}
+
+	.conversation-empty {
+		min-height: 220px;
+	}
+
+	.conversation-message {
+		max-width: 100%;
+	}
+
+	.ask-form__actions {
+		flex-direction: column;
+		align-items: stretch;
+	}
+
+	.ask-form__actions .el-button {
+		width: 100%;
+		margin-left: 0;
+	}
+}
+
+/* Product-console theme override: code search/RAG systems need density and low visual noise. */
+.knowledge-shell {
+	--font-title:
+		"Inter", "SF Pro Display", "Segoe UI", "PingFang SC", "Microsoft YaHei",
+		sans-serif;
+	--font-body:
+		"Inter", "SF Pro Text", "Segoe UI", "PingFang SC", "Microsoft YaHei",
+		sans-serif;
+	--page-bg: #f6f8fb;
+	--page-ink: #111827;
+	--muted-ink: #667085;
+	--paper: #ffffff;
+	--paper-strong: #ffffff;
+	--paper-soft: #f8fafc;
+	--line: #e4e7ec;
+	--line-strong: #cfd6e3;
+	--accent: #2563eb;
+	--accent-2: #059669;
+	--gold: #f59e0b;
+	--shadow: 0 1px 2px rgba(16, 24, 40, 0.06);
+	--inner-shadow: none;
+	--el-color-primary: var(--accent);
+	--el-color-primary-light-3: #5b8def;
+	--el-color-primary-light-5: #93b5f7;
+	--el-color-primary-light-7: #bfd2fb;
+	--el-color-primary-light-8: #d7e4fd;
+	--el-color-primary-light-9: #eff5ff;
+	--el-color-primary-dark-2: #1d4ed8;
+	--el-border-color: var(--line);
+	--el-border-color-light: #eef1f5;
+	--el-border-color-lighter: #f2f4f7;
+	--el-text-color-primary: var(--page-ink);
+	--el-text-color-regular: #344054;
+	--el-fill-color-blank: #ffffff;
+	--el-fill-color-light: #f8fafc;
+	--el-bg-color: #ffffff;
+	--el-bg-color-overlay: #ffffff;
+	background: var(--page-bg);
+}
+
+.knowledge-shell--ink {
+	--page-bg: #0b1020;
+	--page-ink: #eef2ff;
+	--muted-ink: #9aa4b2;
+	--paper: #111827;
+	--paper-strong: #151f32;
+	--paper-soft: #0f172a;
+	--line: rgba(148, 163, 184, 0.22);
+	--line-strong: rgba(148, 163, 184, 0.38);
+	--accent: #60a5fa;
+	--accent-2: #34d399;
+	--gold: #fbbf24;
+	--shadow: 0 1px 2px rgba(0, 0, 0, 0.28);
+	--el-color-primary: var(--accent);
+	--el-color-primary-light-3: #7db8fb;
+	--el-color-primary-light-5: #9dccfc;
+	--el-color-primary-light-7: #bddffd;
+	--el-color-primary-light-8: #d1e9fe;
+	--el-color-primary-light-9: rgba(96, 165, 250, 0.14);
+	--el-color-primary-dark-2: #3b82f6;
+	--el-border-color: var(--line);
+	--el-border-color-light: rgba(148, 163, 184, 0.16);
+	--el-border-color-lighter: rgba(148, 163, 184, 0.1);
+	--el-text-color-primary: var(--page-ink);
+	--el-text-color-regular: var(--muted-ink);
+	--el-fill-color-blank: var(--paper-strong);
+	--el-fill-color-light: var(--paper-soft);
+	--el-bg-color: var(--paper-strong);
+	--el-bg-color-overlay: #172033;
+	background: var(--page-bg);
+}
+
+.knowledge-shell::before,
+.knowledge-shell::after {
+	display: none;
+}
+
+.hero-band {
+	padding: 22px 24px;
+	border: 1px solid var(--line);
+	border-radius: 8px;
+	background: var(--paper);
+	box-shadow: var(--shadow);
+	backdrop-filter: none;
+}
+
+.knowledge-shell--ink .hero-band {
+	background: var(--paper);
+}
+
+.hero-band::before {
+	display: none;
+}
+
+.hero-band__eyebrow {
+	color: var(--accent);
+	font-family: var(--font-body);
+	font-size: 12px;
+	font-weight: 700;
+	letter-spacing: 0.08em;
+}
+
+.hero-band__title {
+	color: var(--page-ink);
+	font-family: var(--font-title);
+	font-size: clamp(30px, 4vw, 44px);
+	font-weight: 750;
+	text-shadow: none;
+}
+
+.knowledge-shell--ink .hero-band__title {
+	text-shadow: none;
+}
+
+.hero-band__summary {
+	max-width: 720px;
+	color: var(--muted-ink);
+	font-size: 14px;
+	line-height: 1.7;
+}
+
+.hero-band__status,
+.theme-toggle.el-button,
+.metric-card,
+.workspace-panel,
+.search-result,
+.conversation-message,
+.ask-form,
+.conversation-empty,
+.pipeline-result {
+	border-radius: 8px;
+	background: var(--paper);
+	box-shadow: var(--shadow);
+}
+
+.hero-band__status,
+.theme-toggle.el-button,
+.conversation-empty,
+.pipeline-result {
+	border: 1px solid var(--line);
+}
+
+.metric-card,
+.workspace-panel,
+.search-result,
+.conversation-message,
+.ask-form {
+	border: 1px solid var(--line);
+}
+
+.workspace-panel :deep(.el-card__header) {
+	background: var(--paper);
+}
+
+.panel-header__title {
+	padding-left: 0;
+	font-size: 16px;
+	font-weight: 750;
+}
+
+.panel-header__title::before {
+	display: none;
+}
+
+.metric-card__icon {
+	color: var(--accent);
+	background: #eff6ff;
+}
+
+.knowledge-shell--ink .metric-card__icon {
+	background: rgba(96, 165, 250, 0.14);
+}
+
+.metric-card__value {
+	font-family: var(--font-title);
+	font-size: 28px;
+	font-weight: 750;
+}
+
+.metric-card__value--text {
+	font-size: 14px;
+	font-weight: 700;
+}
+
+.search-result,
+.conversation-message,
+.ask-form,
+.pipeline-result {
+	background: var(--paper-strong);
+}
+
+.conversation-message--user {
+	border-color: rgba(37, 99, 235, 0.28);
+	background: #eff6ff;
+}
+
+.knowledge-shell--ink .conversation-message--user {
+	background: rgba(37, 99, 235, 0.16);
+}
+
+.conversation-message--assistant {
+	box-shadow: inset 3px 0 0 var(--accent-2);
+}
+
+.conversation-message:hover,
+.search-result:hover {
+	border-color: var(--line-strong);
+	box-shadow: 0 8px 18px rgba(16, 24, 40, 0.08);
+}
+
+.knowledge-shell :deep(.el-button) {
+	border-radius: 6px;
+	font-family: var(--font-body);
+	font-weight: 650;
+}
+
+.knowledge-shell :deep(.el-button--primary) {
+	border-color: var(--accent);
+	background: var(--accent);
+	box-shadow: none;
+}
+
+.knowledge-shell :deep(.el-input__wrapper),
+.knowledge-shell :deep(.el-textarea__inner) {
+	border-radius: 6px;
+	background: var(--paper-strong);
+	box-shadow: 0 0 0 1px var(--line) inset;
+}
+
+.knowledge-shell :deep(.el-input__wrapper.is-focus),
+.knowledge-shell :deep(.el-textarea__inner:focus) {
+	box-shadow: 0 0 0 1px var(--accent) inset;
+}
+
+.knowledge-shell :deep(.el-upload-dragger) {
+	border-color: var(--line-strong);
+	background: var(--paper-soft);
+}
+
+.knowledge-shell :deep(.el-table th.el-table__cell) {
+	background: var(--paper-soft);
+}
+
+.knowledge-shell :deep(.el-table__row:hover > td.el-table__cell) {
+	background: rgba(37, 99, 235, 0.06);
+}
+
+.markdown-body :deep(pre) {
+	border-color: var(--line);
+	color: #dbeafe;
+	background: #0f172a;
+	box-shadow: none;
+}
+
+/* High-tech command-center skin. */
+.knowledge-shell {
+	--font-title:
+		"Rajdhani", "Orbitron", "SF Pro Display", "Segoe UI", "PingFang SC",
+		"Microsoft YaHei", sans-serif;
+	--font-body:
+		"IBM Plex Sans", "SF Pro Text", "Segoe UI", "PingFang SC",
+		"Microsoft YaHei", sans-serif;
+	--page-bg: #07111f;
+	--page-ink: #e6f3ff;
+	--muted-ink: #8fa8bd;
+	--paper: rgba(11, 24, 42, 0.78);
+	--paper-strong: rgba(13, 29, 52, 0.92);
+	--paper-soft: rgba(8, 19, 34, 0.86);
+	--line: rgba(97, 218, 251, 0.18);
+	--line-strong: rgba(97, 218, 251, 0.42);
+	--accent: #23c7ff;
+	--accent-2: #3df5b6;
+	--gold: #a78bfa;
+	--shadow: 0 18px 48px rgba(0, 0, 0, 0.32);
+	--inner-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
+	--el-color-primary: var(--accent);
+	--el-color-primary-light-3: #5ed7ff;
+	--el-color-primary-light-5: #8ee4ff;
+	--el-color-primary-light-7: #b8efff;
+	--el-color-primary-light-8: #d0f5ff;
+	--el-color-primary-light-9: rgba(35, 199, 255, 0.16);
+	--el-color-primary-dark-2: #0aa7dc;
+	--el-border-color: var(--line);
+	--el-border-color-light: rgba(97, 218, 251, 0.13);
+	--el-border-color-lighter: rgba(97, 218, 251, 0.08);
+	--el-text-color-primary: var(--page-ink);
+	--el-text-color-regular: var(--muted-ink);
+	--el-fill-color-blank: var(--paper-strong);
+	--el-fill-color-light: var(--paper-soft);
+	--el-bg-color: var(--paper-strong);
+	--el-bg-color-overlay: #0d1d34;
+	background:
+		radial-gradient(
+			circle at 18% 12%,
+			rgba(35, 199, 255, 0.18),
+			transparent 28%
+		),
+		radial-gradient(
+			circle at 84% 8%,
+			rgba(61, 245, 182, 0.12),
+			transparent 30%
+		),
+		linear-gradient(rgba(97, 218, 251, 0.045) 1px, transparent 1px),
+		linear-gradient(90deg, rgba(97, 218, 251, 0.045) 1px, transparent 1px),
+		linear-gradient(135deg, #07111f 0%, #081827 46%, #0c1022 100%);
+	background-size:
+		auto,
+		auto,
+		38px 38px,
+		38px 38px,
+		auto;
+}
+
+.knowledge-shell--paper {
+	--page-bg: #eef7ff;
+	--page-ink: #0b1b2e;
+	--muted-ink: #527086;
+	--paper: rgba(255, 255, 255, 0.88);
+	--paper-strong: rgba(255, 255, 255, 0.96);
+	--paper-soft: rgba(232, 247, 255, 0.82);
+	--line: rgba(29, 125, 188, 0.18);
+	--line-strong: rgba(29, 125, 188, 0.36);
+	--accent: #0879c9;
+	--accent-2: #00a77f;
+	--gold: #6d5dfc;
+	--shadow: 0 16px 34px rgba(16, 52, 86, 0.13);
+	--el-bg-color: var(--paper-strong);
+	--el-bg-color-overlay: #ffffff;
+	background:
+		radial-gradient(circle at 16% 8%, rgba(8, 121, 201, 0.16), transparent 26%),
+		radial-gradient(
+			circle at 86% 10%,
+			rgba(0, 167, 127, 0.12),
+			transparent 28%
+		),
+		linear-gradient(rgba(8, 121, 201, 0.05) 1px, transparent 1px),
+		linear-gradient(90deg, rgba(8, 121, 201, 0.05) 1px, transparent 1px),
+		linear-gradient(135deg, #f8fcff 0%, #eef7ff 48%, #e6f2ff 100%);
+	background-size:
+		auto,
+		auto,
+		38px 38px,
+		38px 38px,
+		auto;
+}
+
+.knowledge-shell::before {
+	display: block;
+	position: fixed;
+	inset: 0;
+	z-index: -2;
+	pointer-events: none;
+	content: "";
+	background:
+		linear-gradient(
+			120deg,
+			transparent 0 42%,
+			rgba(35, 199, 255, 0.08) 48%,
+			transparent 54%
+		),
+		repeating-linear-gradient(
+			180deg,
+			rgba(255, 255, 255, 0.035) 0 1px,
+			transparent 1px 7px
+		);
+	mix-blend-mode: screen;
+	opacity: 0.7;
+}
+
+.knowledge-shell--paper::before {
+	mix-blend-mode: multiply;
+	opacity: 0.34;
+}
+
+.knowledge-shell::after {
+	display: block;
+	position: fixed;
+	right: -120px;
+	bottom: -180px;
+	z-index: -1;
+	width: min(58vw, 760px);
+	aspect-ratio: 1;
+	pointer-events: none;
+	content: "";
+	background:
+		radial-gradient(circle, rgba(35, 199, 255, 0.2), transparent 32%),
+		radial-gradient(
+			circle at 42% 44%,
+			rgba(61, 245, 182, 0.12),
+			transparent 30%
+		);
+	filter: blur(10px);
+	opacity: 0.9;
+}
+
+.hero-band,
+.metric-card,
+.workspace-panel,
+.search-result,
+.conversation-message,
+.ask-form,
+.conversation-empty,
+.pipeline-result {
+	position: relative;
+	border: 1px solid var(--line);
+	background:
+		linear-gradient(180deg, rgba(255, 255, 255, 0.08), transparent 42%),
+		var(--paper);
+	box-shadow:
+		var(--shadow),
+		0 0 0 1px rgba(255, 255, 255, 0.035) inset,
+		0 0 38px rgba(35, 199, 255, 0.055);
+	backdrop-filter: blur(16px) saturate(132%);
+}
+
+.hero-band {
+	overflow: hidden;
+	padding: 26px 28px;
+}
+
+.hero-band::before {
+	display: block;
+	position: absolute;
+	inset: 0;
+	pointer-events: none;
+	content: "";
+	border: 0;
+	border-radius: inherit;
+	background:
+		linear-gradient(90deg, rgba(35, 199, 255, 0.18), transparent 38%),
+		linear-gradient(180deg, rgba(61, 245, 182, 0.08), transparent 55%);
+	opacity: 0.75;
+}
+
+.hero-band__copy,
+.hero-band__tools {
+	position: relative;
+}
+
+.hero-band__eyebrow {
+	color: var(--accent-2);
+	font-family: "Cascadia Code", "JetBrains Mono", Consolas, monospace;
+	letter-spacing: 0.14em;
+}
+
+.hero-band__title {
+	color: var(--page-ink);
+	font-size: clamp(40px, 5vw, 68px);
+	font-weight: 800;
+	letter-spacing: 0;
+	text-shadow:
+		0 0 18px rgba(35, 199, 255, 0.28),
+		0 0 34px rgba(61, 245, 182, 0.12);
+}
+
+.hero-band__summary {
+	color: var(--muted-ink);
+	font-size: 15px;
+}
+
+.hero-band__status,
+.theme-toggle.el-button {
+	border-color: var(--line-strong);
+	background:
+		linear-gradient(135deg, rgba(35, 199, 255, 0.12), rgba(61, 245, 182, 0.07)),
+		var(--paper-soft);
+}
+
+.workspace-panel :deep(.el-card__header) {
+	border-bottom-color: var(--line);
+	background:
+		linear-gradient(90deg, rgba(35, 199, 255, 0.1), transparent 70%),
+		transparent;
+}
+
+.panel-header__title {
+	color: var(--page-ink);
+	font-size: 17px;
+	letter-spacing: 0;
+}
+
+.panel-header__subtitle,
+.metric-card__label,
+.search-result__meta,
+.conversation-message__role {
+	color: var(--muted-ink);
+}
+
+.metric-card__icon {
+	color: var(--accent);
+	background:
+		radial-gradient(
+			circle at 35% 30%,
+			rgba(61, 245, 182, 0.22),
+			transparent 42%
+		),
+		rgba(35, 199, 255, 0.11);
+	box-shadow: 0 0 20px rgba(35, 199, 255, 0.12);
+}
+
+.metric-card__value {
+	color: var(--page-ink);
+	font-family: var(--font-title);
+	font-size: 32px;
+}
+
+.knowledge-shell :deep(.el-button--primary) {
+	border-color: rgba(35, 199, 255, 0.64);
+	color: #03111d;
+	background: linear-gradient(135deg, var(--accent), var(--accent-2));
+	box-shadow:
+		0 10px 26px rgba(35, 199, 255, 0.18),
+		0 0 0 1px rgba(255, 255, 255, 0.28) inset;
+}
+
+.knowledge-shell :deep(.el-button:not(.el-button--primary)) {
+	border-color: var(--line);
+	color: var(--page-ink);
+	background: rgba(255, 255, 255, 0.04);
+}
+
+.knowledge-shell--paper :deep(.el-button:not(.el-button--primary)) {
+	background: rgba(255, 255, 255, 0.78);
+}
+
+.knowledge-shell :deep(.el-input__wrapper),
+.knowledge-shell :deep(.el-textarea__inner) {
+	color: var(--page-ink);
+	background: rgba(6, 17, 32, 0.48);
+	box-shadow: 0 0 0 1px var(--line) inset;
+}
+
+.knowledge-shell--paper :deep(.el-input__wrapper),
+.knowledge-shell--paper :deep(.el-textarea__inner) {
+	background: rgba(255, 255, 255, 0.88);
+}
+
+.knowledge-shell :deep(.el-input__wrapper.is-focus),
+.knowledge-shell :deep(.el-textarea__inner:focus) {
+	box-shadow:
+		0 0 0 1px var(--accent) inset,
+		0 0 0 3px rgba(35, 199, 255, 0.12);
+}
+
+.knowledge-shell :deep(.el-upload-dragger) {
+	border-color: var(--line-strong);
+	background:
+		linear-gradient(135deg, rgba(35, 199, 255, 0.09), rgba(61, 245, 182, 0.06)),
+		var(--paper-soft);
+}
+
+.search-result,
+.conversation-message {
+	transition:
+		border-color 180ms ease,
+		box-shadow 180ms ease,
+		transform 180ms ease;
+}
+
+.search-result:hover,
+.conversation-message:hover {
+	border-color: var(--line-strong);
+	box-shadow:
+		0 14px 34px rgba(0, 0, 0, 0.2),
+		0 0 28px rgba(35, 199, 255, 0.1);
+	transform: translateY(-2px);
+}
+
+.conversation-message--user {
+	border-color: rgba(35, 199, 255, 0.34);
+	background:
+		linear-gradient(135deg, rgba(35, 199, 255, 0.16), transparent 64%),
+		var(--paper-soft);
+}
+
+.conversation-message--assistant {
+	box-shadow:
+		inset 3px 0 0 var(--accent-2),
+		0 0 24px rgba(61, 245, 182, 0.06);
+}
+
+.knowledge-shell :deep(.el-table th.el-table__cell) {
+	color: var(--page-ink);
+	background: rgba(35, 199, 255, 0.08);
+}
+
+.knowledge-shell :deep(.el-table__row:hover > td.el-table__cell) {
+	background: rgba(35, 199, 255, 0.08);
+}
+
+.knowledge-shell :deep(.el-progress-bar__inner) {
+	background: linear-gradient(
+		90deg,
+		var(--accent),
+		var(--accent-2),
+		var(--gold)
+	);
+	box-shadow: 0 0 18px rgba(35, 199, 255, 0.28);
+}
+
+.markdown-body :deep(pre) {
+	border-color: rgba(35, 199, 255, 0.26);
+	color: #d9f7ff;
+	background:
+		linear-gradient(180deg, rgba(35, 199, 255, 0.05), transparent 42px), #06111f;
+	box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.03);
+}
+
+/* Local-first typography: sharp tech headings, readable Chinese body, stable code font. */
+.knowledge-shell {
+	--font-title:
+		"Bahnschrift", "DIN Alternate", "Arial Narrow", "Microsoft YaHei UI",
+		"PingFang SC", sans-serif;
+	--font-body:
+		"Microsoft YaHei UI", "Segoe UI Variable", "Segoe UI", "PingFang SC",
+		"Hiragino Sans GB", sans-serif;
+	--font-code:
+		"Cascadia Code", "JetBrains Mono", "SFMono-Regular", Consolas, monospace;
+	font-family: var(--font-body);
+}
+
+.hero-band__title,
+.metric-card__value {
+	font-family: var(--font-title);
+	font-stretch: condensed;
+}
+
+.hero-band__eyebrow,
+.hero-band__model,
+.search-result__meta,
+.conversation-message__role,
+.markdown-body :deep(code),
+.markdown-body :deep(pre code) {
+	font-family: var(--font-code);
+}
+
+.panel-header__title,
+.metric-card__label,
+.knowledge-shell :deep(.el-button),
+.knowledge-shell :deep(.el-tag) {
+	font-family: var(--font-body);
+}
+
+.repository-table :deep(.el-table__row) {
+	cursor: pointer;
+	transition:
+		background 160ms ease,
+		box-shadow 160ms ease,
+		transform 160ms ease;
+}
+
+.repository-table :deep(.el-table__row:hover > td.el-table__cell) {
+	background:
+		linear-gradient(90deg, rgba(35, 199, 255, 0.12), transparent 62%),
+		rgba(35, 199, 255, 0.05);
+}
+
+.repository-table :deep(.repository-row--selected > td.el-table__cell) {
+	position: relative;
+	color: var(--page-ink);
+	background:
+		linear-gradient(90deg, rgba(61, 245, 182, 0.18), rgba(35, 199, 255, 0.08) 58%, transparent),
+		rgba(35, 199, 255, 0.08);
+	box-shadow:
+		inset 3px 0 0 var(--accent-2),
+		inset 0 1px 0 rgba(255, 255, 255, 0.08),
+		inset 0 -1px 0 rgba(97, 218, 251, 0.14);
+}
+
+.repository-name-cell {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	min-width: 0;
+}
+
+.repository-name-cell__dot {
+	width: 8px;
+	height: 8px;
+	flex: 0 0 auto;
+	border: 1px solid var(--line-strong);
+	border-radius: 50%;
+	background: rgba(143, 168, 189, 0.58);
+}
+
+.repository-name-cell__text {
+	min-width: 0;
+	overflow: hidden;
+	color: var(--page-ink);
+	font-weight: 700;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.repository-table
+	:deep(.repository-row--selected)
+	.repository-name-cell__dot {
+	border-color: rgba(61, 245, 182, 0.8);
+	background: var(--accent-2);
+	box-shadow:
+		0 0 0 4px rgba(61, 245, 182, 0.12),
+		0 0 14px rgba(61, 245, 182, 0.42);
+}
+
+.repository-table
+	:deep(.repository-row--selected)
+	.repository-name-cell__text {
+	color: var(--page-ink);
+	text-shadow: 0 0 14px rgba(61, 245, 182, 0.18);
 }
 </style>

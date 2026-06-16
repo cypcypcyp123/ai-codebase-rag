@@ -1,7 +1,7 @@
 import type { ScannedCodeFile } from '@ai-codebase-rag/shared'
 import fs from 'node:fs/promises'
 import path from 'node:path'
-import { ignoredDirectories, ignoredFiles } from './code-ignore.js'
+import { ignoredFiles, shouldIgnoreDirectory } from './code-ignore.js'
 import { detectLanguage, isSupportedCodeFile } from './code-language.js'
 
 export interface ScanCodeRepositoryOptions {
@@ -25,7 +25,9 @@ async function walkDirectory(rootPath: string, currentPath: string, files: Scann
     const entryPath = path.join(currentPath, entry.name)
 
     if (entry.isDirectory()) {
-      if (ignoredDirectories.has(entry.name)) {
+      const relativePath = normalizeRelativePath(path.relative(rootPath, entryPath))
+
+      if (shouldIgnoreDirectory(entry.name, relativePath)) {
         continue
       }
 

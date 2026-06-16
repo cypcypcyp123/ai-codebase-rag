@@ -80,6 +80,28 @@ export interface IndexRepositoryResponse {
 	status: RepositoryStatus;
 }
 
+export type IndexRepositoryProgressStage =
+	| "scanning"
+	| "chunking"
+	| "embedding"
+	| "writing"
+	| "completed"
+	| "failed";
+
+export interface IndexRepositoryProgressEvent {
+	repositoryId: string;
+	stage: IndexRepositoryProgressStage;
+	message: string;
+	percent: number;
+	fileCount: number;
+	chunkCount: number;
+	processedChunks: number;
+	totalChunks: number;
+	batchIndex: number;
+	batchCount: number;
+	status?: RepositoryStatus;
+}
+
 export interface SearchCodeRequest {
 	query: string;
 	limit?: number;
@@ -107,6 +129,15 @@ export interface SearchCodeResponse {
 export interface AskRepositoryRequest {
 	question: string;
 	limit?: number;
+	contextMaxChars?: number;
+	snippetMaxChars?: number;
+	includeFullContext?: boolean;
+	history?: RepositoryConversationMessage[];
+}
+
+export interface RepositoryConversationMessage {
+	role: "user" | "assistant";
+	content: string;
 }
 
 export interface AskRepositoryCitation {

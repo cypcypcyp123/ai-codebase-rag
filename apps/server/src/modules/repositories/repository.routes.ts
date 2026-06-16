@@ -33,6 +33,18 @@ const searchCodeSchema = z.object({
 const askRepositorySchema = z.object({
 	question: z.string().trim().min(1),
 	limit: z.coerce.number().int().positive().max(10).default(5),
+	contextMaxChars: z.coerce.number().int().min(2000).max(50000).default(12000),
+	snippetMaxChars: z.coerce.number().int().min(500).max(20000).default(6000),
+	includeFullContext: z.coerce.boolean().default(false),
+	history: z
+		.array(
+			z.object({
+				role: z.enum(["user", "assistant"]),
+				content: z.string().trim().min(1).max(4000),
+			}),
+		)
+		.max(8)
+		.default([]),
 });
 const uploadTmpRoot = path.resolve(process.cwd(), "../../uploads/tmp");
 
@@ -93,6 +105,37 @@ export async function registerRepositoryRoutes(app: FastifyInstance) {
 		return repositoryIndexService.indexRepository(params.id);
 	});
 
+	// POST /api/repositories/:id/index/stream
+	// 流式索引接口：保持原有 /index 兼容，同时让前端能展示扫描、embedding 和写入进度。
+	app.post("/:id/index/stream", async (request, reply) => {
+		const params = repositoryParamsSchema.parse(request.params);
+
+		reply.raw.writeHead(200, {
+			"content-type": "text/event-stream; charset=utf-8",
+			"cache-control": "no-cache",
+			connection: "keep-alive",
+			"access-control-allow-origin": "*",
+		});
+
+		try {
+			const result = await repositoryIndexService.indexRepositoryWithProgress(
+				params.id,
+				(event) => writeSseEvent(reply.raw, "progress", event),
+			);
+
+			writeSseEvent(reply.raw, "done", result);
+		} catch (error) {
+			repositoryService.updateIndexState(params.id, {
+				status: "failed",
+			});
+			writeSseEvent(reply.raw, "error", {
+				message: error instanceof Error ? error.message : "写入索引失败",
+			});
+		} finally {
+			reply.raw.end();
+		}
+	});
+
 	// POST /api/repositories/:id/search
 	// 只做代码语义检索，不调用大模型，便于单独验证 ChromaDB 检索质量。
 	app.post("/:id/search", async (request): Promise<SearchCodeResponse> => {
@@ -114,6 +157,12 @@ export async function registerRepositoryRoutes(app: FastifyInstance) {
 			params.id,
 			body.question,
 			body.limit,
+			{
+				contextMaxChars: body.contextMaxChars,
+				snippetMaxChars: body.snippetMaxChars,
+				includeFullContext: body.includeFullContext,
+				history: body.history,
+			},
 		);
 	});
 
@@ -126,6 +175,12 @@ export async function registerRepositoryRoutes(app: FastifyInstance) {
 			params.id,
 			body.question,
 			body.limit,
+			{
+				contextMaxChars: body.contextMaxChars,
+				snippetMaxChars: body.snippetMaxChars,
+				includeFullContext: body.includeFullContext,
+				history: body.history,
+			},
 		);
 
 		reply.raw.writeHead(200, {

@@ -3,7 +3,9 @@ import type {
 	ChunkRepositoryResponse,
 	CodeChunk,
 	CodeChunkSummary,
+	IndexRepositoryProgressEvent,
 	IndexRepositoryResponse,
+	RepositoryConversationMessage,
 	ScanRepositoryResponse,
 	SearchCodeResponse,
 } from "@ai-codebase-rag/shared";
@@ -18,7 +20,21 @@ interface SearchRepositoryOptions {
 	includeContent?: boolean;
 }
 
-const MAX_PROMPT_CONTEXT_CHARS = 6000;
+interface AskRepositoryOptions {
+	contextMaxChars: number;
+	snippetMaxChars: number;
+	includeFullContext: boolean;
+	history: RepositoryConversationMessage[];
+}
+
+type IndexProgressHandler = (event: IndexRepositoryProgressEvent) => void;
+
+const DEFAULT_ASK_OPTIONS: AskRepositoryOptions = {
+	contextMaxChars: 12000,
+	snippetMaxChars: 6000,
+	includeFullContext: false,
+	history: [],
+};
 
 export class RepositoryIndexService {
 	constructor(private readonly ollama = new OllamaClient()) {}
@@ -62,8 +78,32 @@ export class RepositoryIndexService {
 	async indexRepository(
 		repositoryId: string,
 	): Promise<IndexRepositoryResponse> {
+		return this.indexRepositoryWithProgress(repositoryId);
+	}
+
+	async indexRepositoryWithProgress(
+		repositoryId: string,
+		onProgress?: IndexProgressHandler,
+	): Promise<IndexRepositoryResponse> {
+		onProgress?.(createIndexProgressEvent(repositoryId, "scanning", {
+			message: "正在扫描源码文件",
+			percent: 5,
+		}));
+
 		const { repository, chunks, fileCount } =
 			await this.buildChunks(repositoryId);
+		const batchCount = Math.ceil(chunks.length / config.ollama.embedBatchSize);
+
+		onProgress?.(
+			createIndexProgressEvent(repository.id, "chunking", {
+				message: `已生成 ${chunks.length} 个代码分片`,
+				percent: chunks.length ? 12 : 100,
+				fileCount,
+				chunkCount: chunks.length,
+				totalChunks: chunks.length,
+				batchCount,
+			}),
+		);
 
 		repositoryService.updateIndexState(repository.id, {
 			fileCount,
@@ -71,15 +111,88 @@ export class RepositoryIndexService {
 			status: "indexing",
 		});
 
+		if (!chunks.length) {
+			const updatedRepository = repositoryService.updateIndexState(
+				repository.id,
+				{
+					fileCount,
+					chunkCount: 0,
+					status: "indexed",
+				},
+			);
+
+			onProgress?.(
+				createIndexProgressEvent(repository.id, "completed", {
+					message: "索引完成",
+					percent: 100,
+					fileCount,
+					chunkCount: 0,
+					status: updatedRepository.status,
+				}),
+			);
+
+			return {
+				repositoryId: updatedRepository.id,
+				fileCount: updatedRepository.fileCount,
+				chunkCount: updatedRepository.chunkCount,
+				status: updatedRepository.status,
+			};
+		}
+
+		let batchIndex = 0;
+		let processedChunks = 0;
+
 		for (const chunkBatch of splitIntoBatches(
 			chunks,
 			config.ollama.embedBatchSize,
 		)) {
+			batchIndex += 1;
+			onProgress?.(
+				createIndexProgressEvent(repository.id, "embedding", {
+					message: `正在生成向量 ${batchIndex}/${batchCount}`,
+					percent: calculateIndexPercent(batchIndex - 1, batchCount, 12, 88),
+					fileCount,
+					chunkCount: chunks.length,
+					processedChunks,
+					totalChunks: chunks.length,
+					batchIndex,
+					batchCount,
+				}),
+			);
+
 			const embeddings = await this.ollama.embed(
 				chunkBatch.map((chunk) => chunk.content),
 			);
+
+			onProgress?.(
+				createIndexProgressEvent(repository.id, "writing", {
+					message: `正在写入 ChromaDB ${batchIndex}/${batchCount}`,
+					percent: calculateIndexPercent(batchIndex - 0.25, batchCount, 12, 88),
+					fileCount,
+					chunkCount: chunks.length,
+					processedChunks,
+					totalChunks: chunks.length,
+					batchIndex,
+					batchCount,
+				}),
+			);
+
 			await vectorStore.upsert(
 				toVectorChunks(repository.id, chunkBatch, embeddings),
+			);
+			processedChunks += chunkBatch.length;
+
+			onProgress?.(
+				createIndexProgressEvent(repository.id, "writing", {
+					message: `已写入 ${processedChunks}/${chunks.length} 个分片`,
+					percent: calculateIndexPercent(batchIndex, batchCount, 12, 88),
+					fileCount,
+					chunkCount: chunks.length,
+					processedChunks,
+					totalChunks: chunks.length,
+					batchIndex,
+					batchCount,
+				}),
 			);
 		}
 
@@ -90,6 +203,20 @@ export class RepositoryIndexService {
 				chunkCount: chunks.length,
 				status: "indexed",
 			},
+		);
+
+		onProgress?.(
+			createIndexProgressEvent(repository.id, "completed", {
+				message: "索引完成",
+				percent: 100,
+				fileCount,
+				chunkCount: chunks.length,
+				processedChunks: chunks.length,
+				totalChunks: chunks.length,
+				batchIndex: batchCount,
+				batchCount,
+				status: updatedRepository.status,
+			}),
 		);
 
 		return {
@@ -149,7 +276,9 @@ export class RepositoryIndexService {
 		repositoryId: string,
 		question: string,
 		limit: number,
+		options: Partial<AskRepositoryOptions> = {},
 	): Promise<AskRepositoryResponse> {
+		const askOptions = normalizeAskOptions(options);
 		const searchResponse = await this.searchRepository(
 			repositoryId,
 			question,
@@ -158,7 +287,11 @@ export class RepositoryIndexService {
 				includeContent: true,
 			},
 		);
-		const prompt = buildCodeQuestionPrompt(question, searchResponse.results);
+		const prompt = buildCodeQuestionPrompt(
+			question,
+			searchResponse.results,
+			askOptions,
+		);
 		const answer = await this.ollama.generate(prompt);
 
 		return {
@@ -180,7 +313,9 @@ export class RepositoryIndexService {
 		repositoryId: string,
 		question: string,
 		limit: number,
+		options: Partial<AskRepositoryOptions> = {},
 	) {
+		const askOptions = normalizeAskOptions(options);
 		const searchResponse = await this.searchRepository(
 			repositoryId,
 			question,
@@ -191,7 +326,11 @@ export class RepositoryIndexService {
 		);
 
 		return {
-			prompt: buildCodeQuestionPrompt(question, searchResponse.results),
+			prompt: buildCodeQuestionPrompt(
+				question,
+				searchResponse.results,
+				askOptions,
+			),
 			citations: searchResponse.results.map((result) => ({
 				chunkId: result.chunkId,
 				relativePath: result.relativePath,
@@ -238,6 +377,40 @@ function splitIntoBatches<T>(items: T[], batchSize: number) {
 	return batches;
 }
 
+function createIndexProgressEvent(
+	repositoryId: string,
+	stage: IndexRepositoryProgressEvent["stage"],
+	partial: Partial<IndexRepositoryProgressEvent> = {},
+): IndexRepositoryProgressEvent {
+	return {
+		repositoryId,
+		stage,
+		message: partial.message ?? stage,
+		percent: partial.percent ?? 0,
+		fileCount: partial.fileCount ?? 0,
+		chunkCount: partial.chunkCount ?? 0,
+		processedChunks: partial.processedChunks ?? 0,
+		totalChunks: partial.totalChunks ?? 0,
+		batchIndex: partial.batchIndex ?? 0,
+		batchCount: partial.batchCount ?? 0,
+		status: partial.status,
+	};
+}
+
+function calculateIndexPercent(
+	currentBatch: number,
+	batchCount: number,
+	startPercent: number,
+	endPercent: number,
+) {
+	if (!batchCount) {
+		return endPercent;
+	}
+
+	const boundedRatio = Math.min(Math.max(currentBatch / batchCount, 0), 1);
+	return Math.round(startPercent + (endPercent - startPercent) * boundedRatio);
+}
+
 function toVectorChunks(
 	repositoryId: string,
 	chunks: CodeChunk[],
@@ -274,21 +447,42 @@ function buildPreview(content: string) {
 function buildCodeQuestionPrompt(
 	question: string,
 	contexts: SearchCodeResponse["results"],
+	options: AskRepositoryOptions,
 ) {
 	return [
 		"You are a codebase analysis assistant.",
+		"Do not include chain-of-thought or hidden reasoning. Provide only the final answer.",
 		"Answer only from the provided code snippets. Cite file paths and line ranges.",
 		"If the snippets contain the answer, give the conclusion directly.",
 		"If the snippets are insufficient, say exactly which file, method, or symbol is missing.",
 		"",
-		buildPromptContext(contexts),
+		buildConversationHistory(options.history),
+		"",
+		buildPromptContext(contexts, options),
 		"",
 		`Question: ${question}`,
 		"Answer:",
 	].join("\n");
 }
 
-function buildPromptContext(contexts: SearchCodeResponse["results"]) {
+function buildConversationHistory(history: RepositoryConversationMessage[]) {
+	if (!history.length) {
+		return "Conversation history: none.";
+	}
+
+	return [
+		"Conversation history:",
+		...history.map((message) => {
+			const role = message.role === "user" ? "User" : "Assistant";
+			return `${role}: ${message.content.slice(0, 1200)}`;
+		}),
+	].join("\n");
+}
+
+function buildPromptContext(
+	contexts: SearchCodeResponse["results"],
+	options: AskRepositoryOptions,
+) {
 	if (!contexts.length) {
 		return "No relevant code snippets were retrieved.";
 	}
@@ -297,11 +491,8 @@ function buildPromptContext(contexts: SearchCodeResponse["results"]) {
 	let usedChars = 0;
 
 	for (const [index, context] of contexts.entries()) {
-		const section = formatPromptContext(
-			context,
-			index,
-			Math.max(0, MAX_PROMPT_CONTEXT_CHARS - usedChars),
-		);
+		const remainingChars = Math.max(0, options.contextMaxChars - usedChars);
+		const section = formatPromptContext(context, index, remainingChars, options);
 
 		if (!section) {
 			break;
@@ -310,7 +501,7 @@ function buildPromptContext(contexts: SearchCodeResponse["results"]) {
 		sections.push(section);
 		usedChars += section.length;
 
-		if (usedChars >= MAX_PROMPT_CONTEXT_CHARS) {
+		if (usedChars >= options.contextMaxChars) {
 			break;
 		}
 	}
@@ -322,9 +513,16 @@ function formatPromptContext(
 	context: SearchCodeResponse["results"][number],
 	index: number,
 	remainingChars: number,
+	options: AskRepositoryOptions,
 ) {
 	const content = context.content ?? context.preview;
-	const maxContentChars = Math.max(0, remainingChars - 220);
+	const headerBudget = 220;
+	const maxContentChars = options.includeFullContext
+		? Math.max(0, remainingChars - headerBudget)
+		: Math.max(
+				0,
+				Math.min(options.snippetMaxChars, remainingChars - headerBudget),
+			);
 	const boundedContent =
 		content.length > maxContentChars
 			? `${content.slice(0, maxContentChars)}\n\n...content truncated...`
@@ -342,6 +540,20 @@ function formatPromptContext(
 		boundedContent,
 		"```",
 	].join("\n");
+}
+
+function normalizeAskOptions(
+	options: Partial<AskRepositoryOptions>,
+): AskRepositoryOptions {
+	return {
+		contextMaxChars:
+			options.contextMaxChars ?? DEFAULT_ASK_OPTIONS.contextMaxChars,
+		snippetMaxChars:
+			options.snippetMaxChars ?? DEFAULT_ASK_OPTIONS.snippetMaxChars,
+		includeFullContext:
+			options.includeFullContext ?? DEFAULT_ASK_OPTIONS.includeFullContext,
+		history: options.history ?? DEFAULT_ASK_OPTIONS.history,
+	};
 }
 
 function rerankSearchResults(

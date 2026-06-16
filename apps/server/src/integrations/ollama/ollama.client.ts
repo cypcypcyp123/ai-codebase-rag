@@ -3,6 +3,7 @@ import { HttpError } from "../../shared/http-error.js";
 
 interface OllamaGenerateResponse {
 	response?: string;
+	thinking?: string;
 	message?: {
 		content?: string;
 	};
@@ -12,6 +13,7 @@ interface OllamaGenerateResponse {
 
 interface OllamaGenerateStreamResponse {
 	response?: string;
+	thinking?: string;
 	message?: {
 		content?: string;
 	};
@@ -39,6 +41,8 @@ export class OllamaClient {
 				model: config.ollama.chatModel,
 				prompt,
 				stream: false,
+				think: config.ollama.think,
+				options: buildGenerateOptions(),
 			}),
 		});
 
@@ -48,6 +52,13 @@ export class OllamaClient {
 		const content = data.response ?? data.message?.content ?? "";
 
 		if (!content.trim()) {
+			if (data.done_reason === "length" && data.thinking?.trim()) {
+				return [
+					"模型输出长度已耗尽，未生成正式回答。",
+					"请降低“最多参考代码量”或关闭过大的完整片段设置后重试。",
+				].join("\n");
+			}
+
 			throw new HttpError(buildEmptyGenerateMessage("generate", data), 502);
 		}
 
@@ -62,6 +73,8 @@ export class OllamaClient {
 				model: config.ollama.chatModel,
 				prompt,
 				stream: true,
+				think: config.ollama.think,
+				options: buildGenerateOptions(),
 			}),
 		});
 
@@ -131,6 +144,13 @@ function parseStreamDelta(line: string) {
 	}
 
 	return data.response ?? data.message?.content ?? "";
+}
+
+function buildGenerateOptions() {
+	return {
+		num_ctx: config.ollama.numCtx,
+		num_predict: config.ollama.numPredict,
+	};
 }
 
 function buildEmptyGenerateMessage(
