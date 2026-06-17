@@ -152,7 +152,9 @@ function openAskSettings() {
 }
 
 function repositoryRowClassName({ row }: { row: CodeRepository }) {
-	return row.id === selectedRepositoryId.value ? "repository-row--selected" : "";
+	return row.id === selectedRepositoryId.value
+		? "repository-row--selected"
+		: "";
 }
 
 function statusType(status: CodeRepository["status"]) {
@@ -2722,13 +2724,18 @@ async function copyAnswerMarkdown() {
 .repository-table :deep(.repository-row--selected > td.el-table__cell) {
 	position: relative;
 	color: var(--page-ink);
-	background:
-		linear-gradient(90deg, rgba(61, 245, 182, 0.18), rgba(35, 199, 255, 0.08) 58%, transparent),
+	/* background:
+		linear-gradient(
+			90deg,
+			rgba(61, 245, 182, 0.18),
+			rgba(35, 199, 255, 0.08) 58%,
+			transparent
+		),
 		rgba(35, 199, 255, 0.08);
 	box-shadow:
 		inset 3px 0 0 var(--accent-2),
 		inset 0 1px 0 rgba(255, 255, 255, 0.08),
-		inset 0 -1px 0 rgba(97, 218, 251, 0.14);
+		inset 0 -1px 0 rgba(97, 218, 251, 0.14); */
 }
 
 .repository-name-cell {
@@ -2756,9 +2763,7 @@ async function copyAnswerMarkdown() {
 	white-space: nowrap;
 }
 
-.repository-table
-	:deep(.repository-row--selected)
-	.repository-name-cell__dot {
+.repository-table :deep(.repository-row--selected) .repository-name-cell__dot {
 	border-color: rgba(61, 245, 182, 0.8);
 	background: var(--accent-2);
 	box-shadow:
@@ -2766,9 +2771,7 @@ async function copyAnswerMarkdown() {
 		0 0 14px rgba(61, 245, 182, 0.42);
 }
 
-.repository-table
-	:deep(.repository-row--selected)
-	.repository-name-cell__text {
+.repository-table :deep(.repository-row--selected) .repository-name-cell__text {
 	color: var(--page-ink);
 	text-shadow: 0 0 14px rgba(61, 245, 182, 0.18);
 }
@@ -2821,9 +2824,21 @@ async function copyAnswerMarkdown() {
 	color: var(--page-ink);
 	font-family: var(--font-body);
 	background:
-		radial-gradient(circle at 16% 8%, rgba(125, 238, 255, 0.28), transparent 27%),
-		radial-gradient(circle at 86% 12%, rgba(125, 255, 216, 0.2), transparent 25%),
-		radial-gradient(circle at 58% 0%, rgba(183, 167, 255, 0.18), transparent 31%),
+		radial-gradient(
+			circle at 16% 8%,
+			rgba(125, 238, 255, 0.28),
+			transparent 27%
+		),
+		radial-gradient(
+			circle at 86% 12%,
+			rgba(125, 255, 216, 0.2),
+			transparent 25%
+		),
+		radial-gradient(
+			circle at 58% 0%,
+			rgba(183, 167, 255, 0.18),
+			transparent 31%
+		),
 		linear-gradient(rgba(199, 247, 255, 0.05) 1px, transparent 1px),
 		linear-gradient(90deg, rgba(199, 247, 255, 0.045) 1px, transparent 1px),
 		linear-gradient(135deg, #04111d 0%, #071c2f 46%, #0b1022 100%);
@@ -2857,8 +2872,16 @@ async function copyAnswerMarkdown() {
 	--el-bg-color-overlay: rgba(255, 255, 255, 0.95);
 	background:
 		radial-gradient(circle at 16% 8%, rgba(47, 180, 226, 0.2), transparent 27%),
-		radial-gradient(circle at 86% 12%, rgba(0, 186, 151, 0.14), transparent 25%),
-		radial-gradient(circle at 58% 0%, rgba(117, 104, 255, 0.12), transparent 31%),
+		radial-gradient(
+			circle at 86% 12%,
+			rgba(0, 186, 151, 0.14),
+			transparent 25%
+		),
+		radial-gradient(
+			circle at 58% 0%,
+			rgba(117, 104, 255, 0.12),
+			transparent 31%
+		),
 		linear-gradient(rgba(16, 122, 159, 0.055) 1px, transparent 1px),
 		linear-gradient(90deg, rgba(16, 122, 159, 0.05) 1px, transparent 1px),
 		linear-gradient(135deg, #f7fdff 0%, #eefdff 50%, #e9f8ff 100%);
@@ -2900,8 +2923,17 @@ async function copyAnswerMarkdown() {
 	inset: 0;
 	z-index: -2;
 	background:
-		linear-gradient(115deg, transparent 0 37%, rgba(125, 238, 255, 0.12) 45%, transparent 54%),
-		repeating-linear-gradient(180deg, rgba(255, 255, 255, 0.035) 0 1px, transparent 1px 8px);
+		linear-gradient(
+			115deg,
+			transparent 0 37%,
+			rgba(125, 238, 255, 0.12) 45%,
+			transparent 54%
+		),
+		repeating-linear-gradient(
+			180deg,
+			rgba(255, 255, 255, 0.035) 0 1px,
+			transparent 1px 8px
+		);
 	mix-blend-mode: screen;
 	opacity: 0.58;
 }
@@ -2919,9 +2951,21 @@ async function copyAnswerMarkdown() {
 	aspect-ratio: 1;
 	border-radius: 50%;
 	background:
-		radial-gradient(circle at 36% 36%, rgba(125, 238, 255, 0.3), transparent 32%),
-		radial-gradient(circle at 64% 52%, rgba(125, 255, 216, 0.22), transparent 34%),
-		radial-gradient(circle at 48% 66%, rgba(183, 167, 255, 0.18), transparent 36%);
+		radial-gradient(
+			circle at 36% 36%,
+			rgba(125, 238, 255, 0.3),
+			transparent 32%
+		),
+		radial-gradient(
+			circle at 64% 52%,
+			rgba(125, 255, 216, 0.22),
+			transparent 34%
+		),
+		radial-gradient(
+			circle at 48% 66%,
+			rgba(183, 167, 255, 0.18),
+			transparent 36%
+		);
 	filter: blur(18px);
 	opacity: 0.86;
 }
@@ -2979,7 +3023,13 @@ async function copyAnswerMarkdown() {
 	inset: auto 26px 18px 26px;
 	height: 1px;
 	border: 0;
-	background: linear-gradient(90deg, transparent, var(--accent), var(--accent-2), transparent);
+	background: linear-gradient(
+		90deg,
+		transparent,
+		var(--accent),
+		var(--accent-2),
+		transparent
+	);
 	box-shadow: 0 0 18px rgba(125, 238, 255, 0.42);
 }
 
@@ -3083,7 +3133,11 @@ async function copyAnswerMarkdown() {
 	border: 1px solid var(--line);
 	color: var(--accent);
 	background:
-		radial-gradient(circle at 35% 28%, rgba(255, 255, 255, 0.32), transparent 32%),
+		radial-gradient(
+			circle at 35% 28%,
+			rgba(255, 255, 255, 0.32),
+			transparent 32%
+		),
 		linear-gradient(135deg, rgba(125, 238, 255, 0.22), rgba(125, 255, 216, 0.1));
 	box-shadow:
 		inset 0 1px 0 rgba(255, 255, 255, 0.22),
@@ -3217,7 +3271,11 @@ async function copyAnswerMarkdown() {
 .knowledge-shell :deep(.el-upload-dragger) {
 	border-color: var(--line-strong);
 	background:
-		radial-gradient(circle at 20% 0%, rgba(125, 238, 255, 0.16), transparent 36%),
+		radial-gradient(
+			circle at 20% 0%,
+			rgba(125, 238, 255, 0.16),
+			transparent 36%
+		),
 		linear-gradient(135deg, rgba(255, 255, 255, 0.14), transparent 48%),
 		rgba(221, 249, 255, 0.08);
 	backdrop-filter: blur(16px);
@@ -3263,7 +3321,11 @@ async function copyAnswerMarkdown() {
 	justify-self: end;
 	border-color: rgba(125, 238, 255, 0.42);
 	background:
-		radial-gradient(circle at 100% 0%, rgba(125, 238, 255, 0.24), transparent 42%),
+		radial-gradient(
+			circle at 100% 0%,
+			rgba(125, 238, 255, 0.24),
+			transparent 42%
+		),
 		var(--paper-strong);
 }
 
@@ -3271,7 +3333,11 @@ async function copyAnswerMarkdown() {
 	justify-self: start;
 	border-color: rgba(125, 255, 216, 0.36);
 	background:
-		radial-gradient(circle at 0% 0%, rgba(125, 255, 216, 0.18), transparent 42%),
+		radial-gradient(
+			circle at 0% 0%,
+			rgba(125, 255, 216, 0.18),
+			transparent 42%
+		),
 		var(--paper);
 	box-shadow:
 		inset 3px 0 0 var(--accent-2),
@@ -3312,13 +3378,18 @@ async function copyAnswerMarkdown() {
 
 .repository-table :deep(.repository-row--selected > td.el-table__cell) {
 	color: var(--page-ink);
-	background:
-		linear-gradient(90deg, rgba(125, 255, 216, 0.18), rgba(125, 238, 255, 0.1) 60%, transparent),
+	/* background:
+		linear-gradient(
+			90deg,
+			rgba(125, 255, 216, 0.18),
+			rgba(125, 238, 255, 0.1) 60%,
+			transparent
+		),
 		rgba(125, 238, 255, 0.08);
 	box-shadow:
 		inset 3px 0 0 var(--accent-2),
 		inset 0 1px 0 rgba(255, 255, 255, 0.1),
-		inset 0 -1px 0 rgba(199, 247, 255, 0.15);
+		inset 0 -1px 0 rgba(199, 247, 255, 0.15); */
 }
 
 .repository-name-cell__dot {
@@ -3350,7 +3421,12 @@ async function copyAnswerMarkdown() {
 }
 
 .knowledge-shell :deep(.el-progress-bar__inner) {
-	background: linear-gradient(90deg, var(--accent), var(--accent-2), var(--gold));
+	background: linear-gradient(
+		90deg,
+		var(--accent),
+		var(--accent-2),
+		var(--gold)
+	);
 	box-shadow: 0 0 18px rgba(125, 238, 255, 0.36);
 }
 
@@ -3446,16 +3522,22 @@ async function copyAnswerMarkdown() {
 	.repository-table
 	:deep(.repository-row--selected > td.el-table__cell) {
 	color: #0b2435;
-	background:
-		linear-gradient(90deg, rgba(0, 169, 130, 0.12), rgba(8, 126, 164, 0.08) 58%, transparent),
-		rgba(255, 255, 255, 0.38);
+	/* background:
+		linear-gradient(
+			90deg,
+			rgba(0, 169, 130, 0.12),
+			rgba(8, 126, 164, 0.08) 58%,
+			transparent
+		),
+		rgba(255, 255, 255, 0.38); */
 }
 
 .knowledge-shell--paper :deep(.el-descriptions__label.el-descriptions__cell),
 .knowledge-shell--paper :deep(.el-descriptions__content.el-descriptions__cell) {
 	color: #123044;
-	border-color: rgba(16, 122, 159, 0.16);
-	background: rgba(255, 255, 255, 0.4);
+	border: none !important;
+	/* border-color: rgba(16, 122, 159, 0.16); */
+	background: rgba(255, 255, 255, 0.9);
 }
 
 .knowledge-shell--paper :deep(.el-tag) {
