@@ -24,6 +24,9 @@ import type { UploadAjaxError } from "element-plus/es/components/upload/src/ajax
 import DOMPurify from "dompurify";
 import MarkdownIt from "markdown-it";
 import { computed, shallowRef } from "vue";
+import AuroraBackground from "@/components/ui/AuroraBackground.vue";
+import BorderBeam from "@/components/ui/BorderBeam.vue";
+import NumberTicker from "@/components/ui/NumberTicker.vue";
 import { useKnowledgeStatus } from "@/composables/useKnowledgeStatus";
 import { useRepositoryWorkspace } from "@/composables/useRepositoryWorkspace";
 
@@ -211,7 +214,10 @@ async function copyAnswerMarkdown() {
 
 <template>
 	<main :class="shellClasses">
+		<AuroraBackground :intensity="isInkTheme ? 'strong' : 'soft'" />
+
 		<section class="hero-band">
+			<BorderBeam :duration="9" :opacity="0.7" />
 			<div class="hero-band__copy">
 				<p class="hero-band__eyebrow">Neural Codebase Intelligence</p>
 				<h1 class="hero-band__title">代码知识库平台</h1>
@@ -256,16 +262,23 @@ async function copyAnswerMarkdown() {
 
 		<section class="metric-grid">
 			<el-card shadow="never" class="metric-card">
+				<BorderBeam :duration="7" />
 				<el-icon class="metric-card__icon"><FolderOpened /></el-icon>
 				<span class="metric-card__label">仓库数量</span>
-				<strong class="metric-card__value">{{ repositories.length }}</strong>
+				<strong class="metric-card__value">
+					<NumberTicker :value="repositories.length" />
+				</strong>
 			</el-card>
 			<el-card shadow="never" class="metric-card">
+				<BorderBeam :duration="8" />
 				<el-icon class="metric-card__icon"><DataAnalysis /></el-icon>
 				<span class="metric-card__label">已索引</span>
-				<strong class="metric-card__value">{{ indexedCount }}</strong>
+				<strong class="metric-card__value">
+					<NumberTicker :value="indexedCount" />
+				</strong>
 			</el-card>
 			<el-card shadow="never" class="metric-card">
+				<BorderBeam :duration="9" />
 				<el-icon class="metric-card__icon"><Cpu /></el-icon>
 				<span class="metric-card__label">向量模型</span>
 				<strong class="metric-card__value metric-card__value--text">
@@ -273,6 +286,7 @@ async function copyAnswerMarkdown() {
 				</strong>
 			</el-card>
 			<el-card shadow="never" class="metric-card">
+				<BorderBeam :duration="10" />
 				<el-icon class="metric-card__icon"><Link /></el-icon>
 				<span class="metric-card__label">ChromaDB</span>
 				<strong class="metric-card__value metric-card__value--text">
@@ -285,6 +299,7 @@ async function copyAnswerMarkdown() {
 
 		<section class="workspace-layout">
 			<el-card shadow="never" class="workspace-panel workspace-panel--form">
+				<BorderBeam :duration="11" :opacity="0.45" />
 				<template #header>
 					<div class="panel-header">
 						<div>
@@ -363,6 +378,7 @@ async function copyAnswerMarkdown() {
 			</el-card>
 
 			<el-card shadow="never" class="workspace-panel workspace-panel--table">
+				<BorderBeam :duration="12" :opacity="0.45" />
 				<template #header>
 					<div class="panel-header">
 						<div>
@@ -3041,6 +3057,13 @@ async function copyAnswerMarkdown() {
 .conversation-message > *,
 .ask-form > *,
 .pipeline-result > * {
+	position: relative;
+	z-index: 1;
+}
+
+.metric-card :deep(.el-card__body),
+.workspace-panel :deep(.el-card__header),
+.workspace-panel :deep(.el-card__body) {
 	position: relative;
 	z-index: 1;
 }
